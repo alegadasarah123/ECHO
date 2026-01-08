@@ -1,6 +1,6 @@
 // HORSE_OPERATOR/Hfeed.tsx
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import * as Notifications from 'expo-notifications';
+import { Checkbox } from 'expo-checkbox';
 
 type Meal = {
   id: string;
@@ -39,6 +40,13 @@ type FeedType = {
   name: string;
   amount: string;
   image: string;
+};
+
+type Horse = {
+  id: string;
+  name: string;
+  selected?: boolean;
+  is_deceased?: boolean;
 };
 
 // Real horse food images from Unsplash - actual photos of what horses eat
@@ -108,6 +116,43 @@ const FeedScreen = () => {
   ]);
   
   const [showPeriodDropdown, setShowPeriodDropdown] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [isEditingFromSettings, setIsEditingFromSettings] = useState(false);
+  const [editingMealFromSettings, setEditingMealFromSettings] = useState<Meal | null>(null);
+  
+  // New state for horse selection
+  const [availableHorses, setAvailableHorses] = useState<Horse[]>([]);
+  const [selectedHorses, setSelectedHorses] = useState<Horse[]>([]);
+  const [selectAllHorses, setSelectAllHorses] = useState(false);
+  const [horseSelectionMode, setHorseSelectionMode] = useState<'single' | 'multiple'>('single');
+
+  // Use refs to avoid dependencies in callbacks
+  const selectedHorsesRef = useRef<Horse[]>([]);
+  const horseIdRef = useRef<string>(horseId);
+  const currentUserRef = useRef<string>('');
+  const horseNameRef = useRef<string>(horseName);
+  const feedingScheduleRef = useRef<Meal[]>([]);
+
+  // Update refs when state changes
+  useEffect(() => {
+    selectedHorsesRef.current = selectedHorses;
+  }, [selectedHorses]);
+
+  useEffect(() => {
+    horseIdRef.current = horseId;
+  }, [horseId]);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
+  useEffect(() => {
+    horseNameRef.current = horseName;
+  }, [horseName]);
+
+  useEffect(() => {
+    feedingScheduleRef.current = feedingSchedule;
+  }, [feedingSchedule]);
 
   // Generate local ID
   const generateLocalId = (): string => {
@@ -124,7 +169,7 @@ const FeedScreen = () => {
     }
   };
 
-  // Sort meals by type
+  // Sort meals by type - stable function
   const sortMealsByType = useCallback((meals: Meal[]): Meal[] => {
     return [...meals].sort((a, b) => {
       const orderA = getMealOrder(a.fd_meal_type);
@@ -133,9 +178,9 @@ const FeedScreen = () => {
     });
   }, []);
 
-  // Get current user
+  // Get current user - memoized with useCallback
   const getCurrentUser = useCallback(async (): Promise<string | null> => {
-    if (currentUser) return currentUser;
+    if (currentUserRef.current) return currentUserRef.current;
     
     try {
       const storedUser = await SecureStore.getItemAsync("user_data");
@@ -145,6 +190,7 @@ const FeedScreen = () => {
         if (id) {
           console.log("Loaded user_id from storage:", id);
           setCurrentUser(id);
+          currentUserRef.current = id;
           return id;
         }
       }
@@ -152,7 +198,105 @@ const FeedScreen = () => {
       console.error('Error getting current user:', error);
     }
     return null;
-  }, [currentUser]);
+  }, []);
+
+  // Filter out deceased horses
+  const filterOutDeceasedHorses = (horses: Horse[]): Horse[] => {
+    return horses.filter(horse => !horse.is_deceased);
+  };
+
+  // Load available horses from API - Filter out deceased horses
+  const loadAvailableHorses = useCallback(async (): Promise<void> => {
+    try {
+      const userId = await getCurrentUser();
+      if (!userId) return;
+
+      // Fetch horses from API
+      const response = await fetch(`${API_BASE_URL}/get_horses/?user_id=${encodeURIComponent(userId)}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data && Array.isArray(data)) {
+          // Filter out deceased horses
+          const aliveHorses = data.filter((horse: any) => 
+            !horse.is_deceased && horse.horse_status !== 'deceased'
+          );
+          
+          const horses = aliveHorses.map((horse: any) => ({
+            id: horse.horse_id,
+            name: horse.horse_name,
+            selected: false,
+            is_deceased: horse.is_deceased || horse.horse_status === 'deceased'
+          }));
+          
+          setAvailableHorses(horses);
+          
+          // Auto-select current horse if it exists in the list
+          if (horseIdRef.current) {
+            const currentHorseExists = horses.some((h: Horse) => h.id === horseIdRef.current);
+            
+            if (currentHorseExists) {
+              const updatedHorses = horses.map((h: Horse) => ({
+                ...h,
+                selected: h.id === horseIdRef.current
+              }));
+              setAvailableHorses(updatedHorses);
+              const selected = updatedHorses.filter((h: Horse) => h.selected);
+              setSelectedHorses(selected);
+              selectedHorsesRef.current = selected;
+            } else {
+              // If current horse not found (might be deceased), select first horse
+              if (horses.length > 0) {
+                const updatedHorses = horses.map((h: Horse, index: number) => ({
+                  ...h,
+                  selected: index === 0
+                }));
+                setAvailableHorses(updatedHorses);
+                const selected = updatedHorses.filter((h: Horse) => h.selected);
+                setSelectedHorses(selected);
+                selectedHorsesRef.current = selected;
+              }
+            }
+          }
+        } else {
+          // Fallback mock data
+          const mockHorses: Horse[] = [
+            { id: horseIdRef.current, name: horseNameRef.current, selected: true, is_deceased: false },
+            { id: '2', name: 'Spirit', selected: false, is_deceased: false },
+            { id: '3', name: 'Thunder', selected: false, is_deceased: false },
+            { id: '4', name: 'Shadow', selected: false, is_deceased: true },
+            { id: '5', name: 'Daisy', selected: false, is_deceased: false },
+          ];
+          
+          const aliveMockHorses = filterOutDeceasedHorses(mockHorses);
+          setAvailableHorses(aliveMockHorses);
+          const selected = aliveMockHorses.filter((h: Horse) => h.selected);
+          setSelectedHorses(selected);
+          selectedHorsesRef.current = selected;
+        }
+      } else {
+        throw new Error('Failed to fetch horses');
+      }
+    } catch (error) {
+      console.error('Error loading available horses:', error);
+      
+      // Fallback mock data on error
+      const mockHorses: Horse[] = [
+        { id: horseIdRef.current, name: horseNameRef.current, selected: true, is_deceased: false },
+        { id: '2', name: 'Spirit', selected: false, is_deceased: false },
+        { id: '3', name: 'Thunder', selected: false, is_deceased: false },
+        { id: '4', name: 'Shadow', selected: false, is_deceased: true },
+        { id: '5', name: 'Daisy', selected: false, is_deceased: false },
+      ];
+      
+      const aliveMockHorses = filterOutDeceasedHorses(mockHorses);
+      setAvailableHorses(aliveMockHorses);
+      const selected = aliveMockHorses.filter((h: Horse) => h.selected);
+      setSelectedHorses(selected);
+      selectedHorsesRef.current = selected;
+    }
+  }, [getCurrentUser]);
 
   // Get food image based on food type
   const getFoodImage = (foodType: string) => {
@@ -205,7 +349,7 @@ const FeedScreen = () => {
   // Load today's feed records
   const loadTodaysFeedRecords = useCallback(async (userId: string): Promise<Meal[]> => {
     try {
-      const url = `${API_BASE_URL}/get_feeding_schedule/?user_id=${encodeURIComponent(userId)}&horse_id=${encodeURIComponent(horseId)}`;
+      const url = `${API_BASE_URL}/get_feeding_schedule/?user_id=${encodeURIComponent(userId)}&horse_id=${encodeURIComponent(horseIdRef.current)}`;
       console.log("Loading today's feed records:", url);
 
       const response = await fetch(url);
@@ -237,7 +381,7 @@ const FeedScreen = () => {
     }
     
     return [];
-  }, [horseId, sortMealsByType]);
+  }, [sortMealsByType]);
 
   // Parse time string to hours and minutes
   const parseTimeString = (timeString: string | undefined): { hours: number, minutes: number } | null => {
@@ -331,8 +475,8 @@ const FeedScreen = () => {
   const storeLastViewedFeedTime = useCallback(async (schedule: Meal[]): Promise<void> => {
     try {
       const lastViewedData = {
-        horseId,
-        horseName,
+        horseId: horseIdRef.current,
+        horseName: horseNameRef.current,
         schedule: schedule.map(meal => ({
           period: meal.fd_meal_type,
           time: meal.fd_time,
@@ -342,18 +486,18 @@ const FeedScreen = () => {
         lastUpdated: new Date().toISOString(),
       };
       
-      await SecureStore.setItemAsync(`last_feed_schedule_${horseId}`, JSON.stringify(lastViewedData));
+      await SecureStore.setItemAsync(`last_feed_schedule_${horseIdRef.current}`, JSON.stringify(lastViewedData));
       console.log('Stored last viewed feed time for automatic notifications');
     } catch (error) {
       console.error('Error storing last viewed feed time:', error);
     }
-  }, [horseId, horseName]);
+  }, []);
 
   // Schedule automatic daily notifications based on last viewed feed time
   const scheduleAutomaticDailyNotifications = useCallback(async (): Promise<void> => {
     try {
       // Get the last stored feed schedule
-      const storedData = await SecureStore.getItemAsync(`last_feed_schedule_${horseId}`);
+      const storedData = await SecureStore.getItemAsync(`last_feed_schedule_${horseIdRef.current}`);
       if (!storedData) {
         console.log('No stored feed schedule found for automatic notifications');
         return;
@@ -374,7 +518,7 @@ const FeedScreen = () => {
         const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync();
         const autoNotifications = scheduledNotifications.filter(notification => 
           notification.content.data?.type === 'auto_feed_reminder' && 
-          notification.content.data?.horseId === horseId
+          notification.content.data?.horseId === horseIdRef.current
         );
         
         for (const notification of autoNotifications) {
@@ -397,26 +541,25 @@ const FeedScreen = () => {
 
             await Notifications.scheduleNotificationAsync({
               content: {
-                title: `${periodEmoji} ${meal.period} - ${horseName}`,
+                title: `${periodEmoji} ${meal.period} - ${horseNameRef.current}`,
                 subtitle: subtitle,
                 body: `🍽️ ${meal.food_type} (${meal.amount})\n${motivationalMessage}`,
                 data: { 
                   type: 'auto_feed_reminder',
-                  horseId: horseId,
-                  horseName: horseName,
+                  horseId: horseIdRef.current,
+                  horseName: horseNameRef.current,
                   period: meal.period,
                   food_type: meal.food_type,
                   amount: meal.amount,
                   time: meal.time,
-                  notificationId: `auto_feed_${horseId}_${meal.period}_${Date.now()}`
                 },
                 sound: 'default',
                 priority: 'high',
                 badge: 1,
                 ...(Platform.OS === 'ios' && {
                   categoryIdentifier: 'FEED_REMINDER',
-                  threadIdentifier: `horse-feeding-${horseId}`,
-                  summaryArgument: horseName,
+                  threadIdentifier: `horse-feeding-${horseIdRef.current}`,
+                  summaryArgument: horseNameRef.current,
                   relevanceScore: 1.0,
                 }),
               },
@@ -432,24 +575,25 @@ const FeedScreen = () => {
     } catch (error) {
       console.error('Error scheduling automatic daily notifications:', error);
     }
-  }, [horseId, horseName]);
+  }, []);
 
   // Schedule feed notifications
-  const scheduleFeedNotifications = useCallback(async (schedule: Meal[]): Promise<void> => {
+  const scheduleFeedNotifications = useCallback(async (schedule: Meal[], horses: Horse[] = []): Promise<void> => {
     try {
       // First, get all currently scheduled notifications
       const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync();
       console.log(`Currently have ${scheduledNotifications.length} scheduled notifications`);
       
-      // Cancel only feed-related notifications for this horse
+      // Cancel only feed-related notifications for selected horses
+      const horseIds = horses.length > 0 ? horses.map(h => h.id) : [horseIdRef.current];
       const feedNotifications = scheduledNotifications.filter(notification => 
         (notification.content.data?.type === 'feed_reminder' || 
          notification.content.data?.type === 'auto_feed_reminder') && 
-        notification.content.data?.horseId === horseId
+        horseIds.includes(notification.content.data?.horseId as string)
       );
       
       if (feedNotifications.length > 0) {
-        console.log(`Canceling ${feedNotifications.length} existing feed notifications for horse ${horseId}`);
+        console.log(`Canceling ${feedNotifications.length} existing feed notifications`);
         for (const notification of feedNotifications) {
           await Notifications.cancelScheduledNotificationAsync(notification.identifier);
         }
@@ -459,78 +603,71 @@ const FeedScreen = () => {
       await storeLastViewedFeedTime(schedule);
 
       // Schedule new notifications for each feed schedule with improved design
-      console.log(`Scheduling ${schedule.length} new feed notifications`);
+      console.log(`Scheduling ${schedule.length} new feed notifications for ${horses.length} horses`);
       
       let successfullyScheduled = 0;
       
       for (const meal of schedule) {
-        // Use the correct property names from the Meal type
         const notificationTime = parseTimeString(meal.fd_time);
         if (notificationTime) {
-          const trigger: Notifications.DailyTriggerInput = {
-            type: Notifications.SchedulableTriggerInputTypes.DAILY,
-            hour: notificationTime.hours,
-            minute: notificationTime.minutes,
-          };
+          // Schedule for each selected horse
+          for (const horse of horses) {
+            const trigger: Notifications.DailyTriggerInput = {
+              type: Notifications.SchedulableTriggerInputTypes.DAILY,
+              hour: notificationTime.hours,
+              minute: notificationTime.minutes,
+            };
 
-          const periodEmoji = getPeriodEmoji(meal.fd_meal_type);
-          const subtitle = getNotificationSubtitle(meal.fd_meal_type);
-          const motivationalMessage = getMotivationalMessage(meal.fd_meal_type);
+            const periodEmoji = getPeriodEmoji(meal.fd_meal_type);
+            const subtitle = getNotificationSubtitle(meal.fd_meal_type);
+            const motivationalMessage = getMotivationalMessage(meal.fd_meal_type);
 
-          const notificationId = await Notifications.scheduleNotificationAsync({
-            content: {
-              title: `${periodEmoji} ${meal.fd_meal_type} - ${horseName}`,
-              subtitle: subtitle,
-              body: `🍽️ ${meal.fd_food_type} (${meal.fd_qty})\n${motivationalMessage}`,
-              data: { 
-                type: 'feed_reminder',
-                horseId: horseId,
-                horseName: horseName,
-                period: meal.fd_meal_type,
-                food_type: meal.fd_food_type,
-                amount: meal.fd_qty,
-                time: meal.fd_time,
-                notificationId: `feed_${horseId}_${meal.fd_meal_type}_${Date.now()}`
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: `${periodEmoji} ${meal.fd_meal_type} - ${horse.name}`,
+                subtitle: subtitle,
+                body: `🍽️ ${meal.fd_food_type} (${meal.fd_qty})\n${motivationalMessage}`,
+                data: { 
+                  type: 'feed_reminder',
+                  horseId: horse.id,
+                  horseName: horse.name,
+                  period: meal.fd_meal_type,
+                  food_type: meal.fd_food_type,
+                  amount: meal.fd_qty,
+                  time: meal.fd_time,
+                },
+                sound: 'default',
+                priority: 'high',
+                badge: 1,
+                ...(Platform.OS === 'ios' && {
+                  categoryIdentifier: 'FEED_REMINDER',
+                  threadIdentifier: `horse-feeding-${horse.id}`,
+                  summaryArgument: horse.name,
+                  relevanceScore: 1.0,
+                }),
               },
-              sound: 'default',
-              priority: 'high',
-              badge: 1,
-              ...(Platform.OS === 'ios' && {
-                categoryIdentifier: 'FEED_REMINDER',
-                threadIdentifier: `horse-feeding-${horseId}`,
-                summaryArgument: horseName,
-                relevanceScore: 1.0,
-              }),
-            },
-            trigger,
-          });
+              trigger,
+            });
 
-          console.log(`✅ Scheduled ${meal.fd_meal_type} notification for ${notificationTime.hours}:${notificationTime.minutes} (ID: ${notificationId})`);
-          successfullyScheduled++;
+            console.log(`✅ Scheduled ${meal.fd_meal_type} notification for ${horse.name} at ${notificationTime.hours}:${notificationTime.minutes}`);
+            successfullyScheduled++;
+          }
         } else {
           console.warn(`❌ Could not parse time for ${meal.fd_meal_type}: ${meal.fd_time}`);
         }
       }
 
-      // Verify scheduled notifications
-      const finalScheduled = await Notifications.getAllScheduledNotificationsAsync();
-      const feedScheduledCount = finalScheduled.filter(notification => 
-        notification.content.data?.type === 'feed_reminder' && 
-        notification.content.data?.horseId === horseId
-      ).length;
-      
-      console.log(`✅ Successfully scheduled ${successfullyScheduled} feed notifications for horse ${horseId}`);
-      console.log(`📊 Verified: ${feedScheduledCount} feed notifications currently scheduled`);
+      console.log(`✅ Successfully scheduled ${successfullyScheduled} feed notifications`);
       
     } catch (error) {
       console.error('❌ Error scheduling notifications:', error);
     }
-  }, [horseId, horseName, storeLastViewedFeedTime]);
+  }, [storeLastViewedFeedTime]);
 
-  // Save schedule to database
-  const saveScheduleToDatabase = async (schedule: Meal[]): Promise<boolean> => {
-    if (!currentUser || !horseId) {
-      console.error('Cannot save schedule: Missing user ID or horse ID');
+  // Save schedule to database permanently - UPDATED TO HANDLE EDITS
+  const saveScheduleToDatabase = async (schedule: Meal[], horses: Horse[] = [], isEdit: boolean = false, mealToUpdate?: Meal): Promise<boolean> => {
+    if (!currentUserRef.current) {
+      console.error('Cannot save schedule: Missing user ID');
       return false;
     }
 
@@ -543,26 +680,37 @@ const FeedScreen = () => {
           food: meal.fd_food_type,
           amount: meal.fd_qty,
           meal_type: meal.fd_meal_type,
+          fd_id: meal.fd_id, // Include fd_id for updates
         }));
 
-      const response = await fetch(`${API_BASE_URL}/save_feeding_schedule/`, {
+      // Use different endpoint for edits vs new schedules
+      const endpoint = isEdit ? 'update_feeding_schedule' : 'save_feeding_schedule';
+      const requestBody: any = {
+        user_id: currentUserRef.current,
+        horse_id: horseIdRef.current, // Sending the current horse ID
+        schedule: scheduleToSave,
+      };
+
+      // For edits, include the specific meal to update
+      if (isEdit && mealToUpdate) {
+        requestBody.fd_id = mealToUpdate.fd_id;
+        requestBody.meal_type = mealToUpdate.fd_meal_type;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/${endpoint}/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          user_id: currentUser,
-          horse_id: horseId,
-          schedule: scheduleToSave,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (response.ok) {
         const result = await response.json();
-        console.log('Feeding schedule saved to database. User type:', result.user_type);
+        console.log('Feeding schedule saved to database:', result);
         
         // Schedule notifications for the new feeding times
-        await scheduleFeedNotifications(schedule);
+        await scheduleFeedNotifications(schedule, horses);
         
         return true;
       } else {
@@ -578,16 +726,16 @@ const FeedScreen = () => {
 
   // Check if meal is completed (by anyone)
   const isMealCompleted = useCallback((mealType: string): boolean => {
-    const existingMeal = feedingSchedule.find(meal => 
+    const existingMeal = feedingScheduleRef.current.find(meal => 
       meal.fd_meal_type === mealType && 
       meal.completed
     );
     return !!existingMeal;
-  }, [feedingSchedule]);
+  }, []);
 
   // Get completed meal info
   const getCompletedMealInfo = useCallback((mealType: string): { fed_by: string, user_type: string } | null => {
-    const existingMeal = feedingSchedule.find(meal => 
+    const existingMeal = feedingScheduleRef.current.find(meal => 
       meal.fd_meal_type === mealType && 
       meal.completed
     );
@@ -595,7 +743,7 @@ const FeedScreen = () => {
       fed_by: existingMeal.fed_by || 'Unknown', 
       user_type: existingMeal.user_type || 'unknown' 
     } : null;
-  }, [feedingSchedule]);
+  }, []);
 
   // Check if all meals are completed
   const areAllMealsCompleted = useCallback((): boolean => {
@@ -614,23 +762,23 @@ const FeedScreen = () => {
       }
       
       // Check if there's already an existing schedule for this meal type
-      const existingSchedule = feedingSchedule.find(meal => meal.fd_meal_type === mealType);
+      const existingSchedule = feedingScheduleRef.current.find(meal => meal.fd_meal_type === mealType);
       if (existingSchedule) {
         return false; // Cannot add schedule for existing meal types
       }
       
       return true; // This meal type is available for new schedules
     });
-  }, [feedingSchedule, isMealCompleted]);
+  }, [isMealCompleted]);
 
   // Get scheduled meal types (for display purposes)
   const getScheduledMealTypes = useCallback((): string[] => {
-    return feedingSchedule.map(meal => meal.fd_meal_type);
-  }, [feedingSchedule]);
+    return feedingScheduleRef.current.map(meal => meal.fd_meal_type);
+  }, []);
 
   // Initialize feed screen
   const initializeFeedScreen = useCallback(async (): Promise<void> => {
-    if (isInitialized || !horseId) return;
+    if (isInitialized || !horseIdRef.current) return;
 
     console.log("Initializing feed screen...");
     setIsLoading(true);
@@ -641,6 +789,9 @@ const FeedScreen = () => {
         console.error("No user ID found");
         return;
       }
+
+      // Load available horses
+      await loadAvailableHorses();
 
       // Load today's feed records
       const todaysRecords = await loadTodaysFeedRecords(userId);
@@ -654,27 +805,20 @@ const FeedScreen = () => {
       if (todaysRecords.length > 0) {
         const activeSchedules = todaysRecords.filter(meal => !meal.completed);
         if (activeSchedules.length > 0) {
-          await scheduleFeedNotifications(activeSchedules);
+          await scheduleFeedNotifications(activeSchedules, selectedHorsesRef.current);
         }
       }
       
       // Schedule automatic daily notifications based on last viewed time
       await scheduleAutomaticDailyNotifications();
       
-    } catch (error: unknown) {
+    } catch (error) {
       console.error('Error initializing feed screen:', error);
       setFeedingSchedule([]);
     } finally {
       setIsLoading(false);
     }
-  }, [
-    isInitialized, 
-    horseId, 
-    getCurrentUser, 
-    loadTodaysFeedRecords, 
-    scheduleFeedNotifications, 
-    scheduleAutomaticDailyNotifications
-  ]);
+  }, [isInitialized, getCurrentUser, loadAvailableHorses, loadTodaysFeedRecords, scheduleFeedNotifications, scheduleAutomaticDailyNotifications]);
 
   // Request notification permissions on component mount
   useEffect(() => {
@@ -714,6 +858,7 @@ const FeedScreen = () => {
     return () => subscription.remove();
   }, []);
 
+  // Initialize once on mount
   useEffect(() => {
     let mounted = true;
     
@@ -735,44 +880,52 @@ const FeedScreen = () => {
     setRefreshing(true);
     
     try {
-      if (currentUser && horseId) {
-        const todaysRecords = await loadTodaysFeedRecords(currentUser);
+      const userId = await getCurrentUser();
+      if (userId && horseIdRef.current) {
+        const todaysRecords = await loadTodaysFeedRecords(userId);
         setFeedingSchedule(todaysRecords);
         
         // Update notifications for active schedules
         const activeSchedules = todaysRecords.filter(meal => !meal.completed);
         if (activeSchedules.length > 0) {
-          await scheduleFeedNotifications(activeSchedules);
+          await scheduleFeedNotifications(activeSchedules, selectedHorsesRef.current);
         }
         
         // Schedule automatic daily notifications
         await scheduleAutomaticDailyNotifications();
+        
+        // Load available horses
+        await loadAvailableHorses();
       }
     } catch (error) {
       console.error('Error refreshing:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [
-    currentUser, 
-    horseId, 
-    loadTodaysFeedRecords, 
-    scheduleFeedNotifications, 
-    scheduleAutomaticDailyNotifications
-  ]);
+  }, [getCurrentUser, loadTodaysFeedRecords, scheduleFeedNotifications, scheduleAutomaticDailyNotifications, loadAvailableHorses]);
 
   // Focus effect
   useFocusEffect(
     useCallback(() => {
-      if (currentUser && isInitialized) {
-        onRefresh();
-      }
-    }, [currentUser, isInitialized, onRefresh])
+      let mounted = true;
+      
+      const refreshData = async () => {
+        if (mounted && currentUserRef.current && isInitialized) {
+          await onRefresh();
+        }
+      };
+      
+      refreshData();
+      
+      return () => {
+        mounted = false;
+      };
+    }, [isInitialized, onRefresh])
   );
 
   // Handle mark as fed
   const handleMarkAsFed = async (meal: Meal): Promise<void> => {
-    if (!currentUser) {
+    if (!currentUserRef.current) {
       Alert.alert('Error', 'User not found');
       return;
     }
@@ -798,8 +951,8 @@ const FeedScreen = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          user_id: currentUser,
-          horse_id: horseId,
+          user_id: currentUserRef.current,
+          horse_id: horseIdRef.current,
           fd_time: meal.fd_time,
           fd_meal_type: meal.fd_meal_type,
           fd_food_type: meal.fd_food_type,
@@ -855,7 +1008,7 @@ const FeedScreen = () => {
         const notificationToCancel = scheduledNotifications.find(notification => 
           (notification.content.data?.type === 'feed_reminder' || 
            notification.content.data?.type === 'auto_feed_reminder') && 
-          notification.content.data?.horseId === horseId &&
+          notification.content.data?.horseId === horseIdRef.current &&
           notification.content.data?.period === meal.fd_meal_type
         );
         
@@ -867,7 +1020,7 @@ const FeedScreen = () => {
         console.error('Error cancelling notification:', error);
       }
         
-      Alert.alert('Success', `Meal fed to ${horseName} and recorded in database!`);
+      Alert.alert('Success', `Meal fed to ${horseNameRef.current} and recorded in database!`);
       
       // Refresh to get the latest data from server
       setTimeout(() => {
@@ -892,25 +1045,39 @@ const FeedScreen = () => {
       return;
     }
 
-    // Get available meal types
-    const availableMealTypes = getAvailableMealTypes();
-    
-    if (availableMealTypes.length === 0) {
+    // Check if meal type and time are set
+    if (!mealType) {
       Alert.alert(
-        'No Available Meal Types',
-        `All meal types either have existing schedules or have been completed.`,
+        'Meal Type Required',
+        'Please set a meal type first using the settings button below.',
         [{ text: 'OK' }]
       );
       return;
     }
 
-    setFeedingTime({
-      hour: '06',
-      minute: '00',
-      period: 'AM',
-    });
-    setMealType('');
-    // REMOVED: Chaff, Resolve, Dynavy, Magnesium from the feedTypes array
+    // Check if meal type is already completed
+    if (isMealCompleted(mealType)) {
+      const completedInfo = getCompletedMealInfo(mealType);
+      Alert.alert(
+        'Cannot Add Schedule',
+        `This ${mealType} has already been completed by ${completedInfo?.fed_by}. You cannot add a new schedule for completed meals.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // Check if meal type already exists
+    const existingMeal = feedingSchedule.find(meal => meal.fd_meal_type === mealType);
+    if (existingMeal) {
+      Alert.alert(
+        'Meal Type Exists',
+        `A ${mealType} schedule already exists. Please edit or delete the existing schedule first.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // Reset feed types
     setFeedTypes([
       { id: '1', name: 'Hay', amount: '', image: FOOD_IMAGES.hay },
       { id: '2', name: 'Oats', amount: '', image: FOOD_IMAGES.oats },
@@ -919,6 +1086,7 @@ const FeedScreen = () => {
       { id: '5', name: 'Apples', amount: '', image: FOOD_IMAGES.apples },
       { id: '6', name: 'Pellets', amount: '', image: FOOD_IMAGES.pellets },
     ]);
+    
     setShowAddView(true);
   };
 
@@ -935,6 +1103,9 @@ const FeedScreen = () => {
     }
 
     setEditingMeal(meal);
+    setMealType(meal.fd_meal_type as any);
+    
+    // Set time from existing meal
     const timeParts = meal.fd_time.split(' ');
     const time = timeParts[0].split(':');
     setFeedingTime({
@@ -942,7 +1113,6 @@ const FeedScreen = () => {
       minute: time[1],
       period: timeParts[1] || 'AM',
     });
-    setMealType(meal.fd_meal_type as any);
           
     const resetFeedTypes = [
       { id: '1', name: 'Hay', amount: '', image: FOOD_IMAGES.hay },
@@ -1001,7 +1171,7 @@ const FeedScreen = () => {
                 const notificationToCancel = scheduledNotifications.find(notification => 
                   (notification.content.data?.type === 'feed_reminder' || 
                    notification.content.data?.type === 'auto_feed_reminder') && 
-                  notification.content.data?.horseId === horseId &&
+                  notification.content.data?.horseId === horseIdRef.current &&
                   notification.content.data?.period === meal.fd_meal_type
                 );
                 
@@ -1013,7 +1183,7 @@ const FeedScreen = () => {
                 // Reschedule remaining notifications to ensure they're properly set
                 const activeSchedules = updatedSchedule.filter(m => !m.completed);
                 if (activeSchedules.length > 0) {
-                  await scheduleFeedNotifications(activeSchedules);
+                  await scheduleFeedNotifications(activeSchedules, selectedHorsesRef.current);
                 }
               } catch (error) {
                 console.error('Error updating notifications:', error);
@@ -1033,7 +1203,7 @@ const FeedScreen = () => {
 
   // Delete meal from database
   const deleteMealFromDatabase = async (mealId: string): Promise<boolean> => {
-    if (!currentUser) {
+    if (!currentUserRef.current) {
       console.error('Cannot delete meal: Missing user ID');
       return false;
     }
@@ -1045,7 +1215,7 @@ const FeedScreen = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          user_id: currentUser,
+          user_id: currentUserRef.current,
           fd_id: mealId,
         }),
       });
@@ -1119,7 +1289,12 @@ const FeedScreen = () => {
     }
 
     if (!mealType) {
-      Alert.alert('Error', 'Please select a meal type.');
+      Alert.alert('Error', 'Please select a meal type in settings first.');
+      return;
+    }
+
+    if (selectedHorses.length === 0) {
+      Alert.alert('Error', 'Please select at least one horse in settings.');
       return;
     }
           
@@ -1174,9 +1349,9 @@ const FeedScreen = () => {
                 setFeedingSchedule(sortMealsByType(updatedSchedule));
                 setShowAddView(false);
                 
-                const success = await saveScheduleToDatabase(updatedSchedule);
+                const success = await saveScheduleToDatabase(updatedSchedule, selectedHorses, true, existingMeal);
                 if (success) {
-                  Alert.alert('Success', `${mealType} schedule updated for ${horseName}!`);
+                  Alert.alert('Success', `${mealType} schedule updated for selected horses!`);
                 } else {
                   Alert.alert('Warning', 'Schedule updated locally but failed to save to database');
                 }
@@ -1201,9 +1376,9 @@ const FeedScreen = () => {
       setFeedingSchedule(sortMealsByType(updatedSchedule));
       setShowAddView(false);
       
-      const success = await saveScheduleToDatabase(updatedSchedule);
+      const success = await saveScheduleToDatabase(updatedSchedule, selectedHorses, false);
       if (success) {
-        Alert.alert('Success', `${mealType} schedule added for ${horseName}!`);
+        Alert.alert('Success', `${mealType} schedule added for selected horses!`);
       } else {
         Alert.alert('Warning', 'Schedule added locally but failed to save to database');
       }
@@ -1213,7 +1388,7 @@ const FeedScreen = () => {
     }
   };
 
-  // Handle save changes
+  // Handle save changes - UPDATED TO SAVE TO DATABASE
   const handleSaveChanges = async (): Promise<void> => {
     const activeFeed = feedTypes.find(feed => feed.amount.trim() !== '');
           
@@ -1222,7 +1397,7 @@ const FeedScreen = () => {
       return;
     }
           
-    if (!editingMeal || !currentUser) return;
+    if (!editingMeal || !currentUserRef.current) return;
 
     // Check if this meal is completed
     if (editingMeal.completed) {
@@ -1253,9 +1428,10 @@ const FeedScreen = () => {
       setFeedingSchedule(sortMealsByType(updatedSchedule));
       setShowEditView(false);
       
-      const success = await saveScheduleToDatabase(updatedSchedule);
+      // Save to database with isEdit flag set to true
+      const success = await saveScheduleToDatabase(updatedSchedule, selectedHorses, true, editingMeal);
       if (success) {
-        Alert.alert('Success', `Feeding schedule updated for ${horseName}!`);
+        Alert.alert('Success', `Feeding schedule updated for selected horses!`);
       } else {
         Alert.alert('Warning', 'Schedule updated locally but failed to save to database');
       }
@@ -1269,6 +1445,148 @@ const FeedScreen = () => {
   const handleCancel = (): void => {
     setShowEditView(false);
     setShowAddView(false);
+  };
+
+  // Handle open settings modal
+  const handleOpenSettingsModal = (): void => {
+    setShowSettingsModal(true);
+  };
+
+  // Handle close settings modal
+  const handleCloseSettingsModal = (): void => {
+    setShowSettingsModal(false);
+    setIsEditingFromSettings(false);
+    setEditingMealFromSettings(null);
+  };
+
+  // Handle horse selection mode change
+  const handleHorseSelectionModeChange = (mode: 'single' | 'multiple'): void => {
+    setHorseSelectionMode(mode);
+    
+    if (mode === 'single') {
+      // If switching to single mode and more than one horse is selected, keep only the first selected
+      if (selectedHorses.length > 1) {
+        const firstSelected = selectedHorses[0];
+        const updatedHorses = availableHorses.map(horse => ({
+          ...horse,
+          selected: horse.id === firstSelected.id
+        }));
+        setAvailableHorses(updatedHorses);
+        setSelectedHorses([firstSelected]);
+        setSelectAllHorses(false);
+      }
+    }
+  };
+
+  // Handle select/deselect horse
+  const handleToggleHorse = (horseId: string): void => {
+    const updatedHorses = availableHorses.map(horse => {
+      if (horse.id === horseId) {
+        const newSelected = !horse.selected;
+        
+        // If single mode and selecting a new horse, deselect all others
+        if (horseSelectionMode === 'single' && newSelected) {
+          return { ...horse, selected: true };
+        }
+        return { ...horse, selected: newSelected };
+      }
+      
+      // In single mode, deselect all other horses when selecting one
+      if (horseSelectionMode === 'single') {
+        return { ...horse, selected: false };
+      }
+      
+      return horse;
+    });
+    
+    setAvailableHorses(updatedHorses);
+    const newSelectedHorses = updatedHorses.filter(h => h.selected);
+    setSelectedHorses(newSelectedHorses);
+    selectedHorsesRef.current = newSelectedHorses;
+    
+    // Update select all state
+    setSelectAllHorses(newSelectedHorses.length === availableHorses.length);
+  };
+
+  // Handle select all horses
+  const handleSelectAllHorses = (): void => {
+    const newSelectAll = !selectAllHorses;
+    setSelectAllHorses(newSelectAll);
+    
+    if (newSelectAll) {
+      // Select all horses
+      const updatedHorses = availableHorses.map(horse => ({
+        ...horse,
+        selected: true
+      }));
+      setAvailableHorses(updatedHorses);
+      setSelectedHorses(updatedHorses);
+      selectedHorsesRef.current = updatedHorses;
+    } else {
+      // Deselect all horses
+      const updatedHorses = availableHorses.map(horse => ({
+        ...horse,
+        selected: false
+      }));
+      setAvailableHorses(updatedHorses);
+      setSelectedHorses([]);
+      selectedHorsesRef.current = [];
+    }
+  };
+
+  // Handle apply settings - NEW FUNCTION TO SAVE TIME CHANGES
+  const handleApplySettings = (): void => {
+    if (!mealType) {
+      Alert.alert('Missing Setting', 'Please select a meal type before proceeding.');
+      return;
+    }
+
+    if (selectedHorses.filter(h => !h.is_deceased).length === 0) {
+      Alert.alert('Missing Setting', 'Please select at least one alive horse before proceeding.');
+      return;
+    }
+
+    // If we're editing an existing meal from settings, save the time change
+    if (isEditingFromSettings && editingMealFromSettings) {
+      const updatedTime = `${feedingTime.hour}:${feedingTime.minute} ${feedingTime.period}`;
+      
+      // Update the local schedule
+      const updatedSchedule = feedingSchedule.map(meal =>
+        meal.id === editingMealFromSettings.id
+          ? {
+              ...meal,
+              fd_time: updatedTime,
+            }
+          : meal
+      );
+      
+      setFeedingSchedule(sortMealsByType(updatedSchedule));
+      
+      // Save to database
+      saveScheduleToDatabase(updatedSchedule, selectedHorses, true, editingMealFromSettings)
+        .then(success => {
+          if (success) {
+            Alert.alert('Success', `Feeding time for ${mealType} has been updated!`);
+          } else {
+            Alert.alert('Warning', 'Time updated locally but failed to save to database');
+          }
+        })
+        .catch(error => {
+          console.error('Error saving time change:', error);
+          Alert.alert('Error', 'Failed to save time changes');
+        });
+    }
+
+    const horseNames = selectedHorses.filter(h => !h.is_deceased).map(h => h.name).join(', ');
+    handleCloseSettingsModal();
+    
+    if (!isEditingFromSettings) {
+      Alert.alert(
+        'Settings Saved',
+        `Settings saved for ${selectedHorses.filter(h => !h.is_deceased).length} horse(s): ${horseNames}\n\nMeal Type: ${mealType}\nTime: ${feedingTime.hour}:${feedingTime.minute} ${feedingTime.period}\n\nYou can now add a feeding schedule.`,
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   // Get meal icon
@@ -1288,6 +1606,47 @@ const FeedScreen = () => {
   // Check if a meal type is already scheduled (for UI display)
   const isMealTypeScheduled = (mealType: string): boolean => {
     return scheduledMealTypes.includes(mealType);
+  };
+
+  // Handle edit schedule settings - FIXED FUNCTION
+  const handleEditScheduleSettings = (meal: Meal): void => {
+    if (meal.completed) {
+      const fedBy = meal.fed_by || 'someone';
+      Alert.alert(
+        'Cannot Edit',
+        `This meal was already fed by ${fedBy}. You cannot edit completed meals.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // Set editing mode
+    setIsEditingFromSettings(true);
+    setEditingMealFromSettings(meal);
+    setMealType(meal.fd_meal_type as any);
+    
+    // Set time from existing meal
+    const timeParts = meal.fd_time.split(' ');
+    const time = timeParts[0].split(':');
+    setFeedingTime({
+      hour: time[0],
+      minute: time[1],
+      period: timeParts[1] || 'AM',
+    });
+    
+    // Auto-select the horse for this meal
+    const updatedHorses = availableHorses.map(h => ({
+      ...h,
+      selected: h.id === horseIdRef.current // Select current horse
+    }));
+    setAvailableHorses(updatedHorses);
+    const selected = updatedHorses.filter(h => h.selected);
+    setSelectedHorses(selected);
+    selectedHorsesRef.current = selected;
+    setSelectAllHorses(false);
+    setHorseSelectionMode('single');
+    
+    setShowSettingsModal(true);
   };
 
   if (isLoading) {
@@ -1314,133 +1673,6 @@ const FeedScreen = () => {
 
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
           <View style={styles.content}>
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Meal Type</Text>
-              <View style={styles.mealTypeContainer}>
-                {(['Breakfast', 'Lunch', 'Dinner'] as const).map((type) => (
-                  <TouchableOpacity
-                    key={type}
-                    style={[
-                      styles.mealTypeButton,
-                      mealType === type && styles.mealTypeButtonSelected,
-                      (isMealCompleted(type) || isMealTypeScheduled(type)) && styles.mealTypeButtonDisabled
-                    ]}
-                    onPress={() => {
-                      if (isMealCompleted(type)) {
-                        const completedInfo = getCompletedMealInfo(type);
-                        Alert.alert(
-                          'Cannot Select',
-                          `This ${type} has been completed by ${completedInfo?.fed_by} and cannot be modified.`,
-                          [{ text: 'OK' }]
-                        );
-                        return;
-                      }
-                      if (isMealTypeScheduled(type) && type !== editingMeal?.fd_meal_type) {
-                        Alert.alert(
-                          'Already Scheduled',
-                          `A ${type} schedule already exists. You cannot have multiple schedules for the same meal type.`,
-                          [{ text: 'OK' }]
-                        );
-                        return;
-                      }
-                      setMealType(type);
-                    }}
-                    disabled={isMealCompleted(type) || (isMealTypeScheduled(type) && type !== editingMeal?.fd_meal_type)}
-                  >
-                    <Text style={[
-                      styles.mealTypeButtonText,
-                      mealType === type && styles.mealTypeButtonTextSelected,
-                      (isMealCompleted(type) || isMealTypeScheduled(type)) && styles.mealTypeButtonTextDisabled
-                    ]}>
-                      {type}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Feeding Time</Text>
-              <View style={styles.timeInputContainer}>
-                <TextInput
-                  style={styles.timeInput}
-                  value={feedingTime.hour}
-                  onChangeText={(value) => handleTimeChange('hour', value)}
-                  placeholder="HH"
-                  keyboardType="numeric"
-                  maxLength={2}
-                />
-                <Text style={styles.timeSeparator}>:</Text>
-                <TextInput
-                  style={styles.timeInput}
-                  value={feedingTime.minute}
-                  onChangeText={(value) => handleTimeChange('minute', value)}
-                  placeholder="MM"
-                  keyboardType="numeric"
-                  maxLength={2}
-                />
-                <TouchableOpacity 
-                  style={styles.periodInput} 
-                  onPress={() => setShowPeriodDropdown(true)}
-                >
-                  <Text style={styles.periodInputText}>{feedingTime.period}</Text>
-                  <FontAwesome5 name="chevron-down" size={12} color="#64748B" />
-                </TouchableOpacity>
-              </View>
-              
-              <Modal
-                visible={showPeriodDropdown}
-                transparent={true}
-                animationType="fade"
-                onRequestClose={() => setShowPeriodDropdown(false)}
-              >
-                <TouchableOpacity 
-                  style={styles.modalOverlay} 
-                  activeOpacity={1} 
-                  onPress={() => setShowPeriodDropdown(false)}
-                >
-                  <View style={styles.dropdownContainer}>
-                    <TouchableOpacity
-                      style={[
-                        styles.dropdownOption,
-                        feedingTime.period === 'AM' && styles.dropdownOptionActive
-                      ]}
-                      onPress={() => {
-                        handleTimeChange('period', 'AM');
-                        setShowPeriodDropdown(false);
-                      }}
-                    >
-                      <Text style={[
-                        styles.dropdownOptionText,
-                        feedingTime.period === 'AM' && styles.dropdownOptionTextActive
-                      ]}>AM</Text>
-                      {feedingTime.period === 'AM' && (
-                        <FontAwesome5 name="check" size={14} color="#3B82F6" />
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.dropdownOption,
-                        feedingTime.period === 'PM' && styles.dropdownOptionActive
-                      ]}
-                      onPress={() => {
-                        handleTimeChange('period', 'PM');
-                        setShowPeriodDropdown(false);
-                      }}
-                    >
-                      <Text style={[
-                        styles.dropdownOptionText,
-                        feedingTime.period === 'PM' && styles.dropdownOptionTextActive
-                      ]}>PM</Text>
-                      {feedingTime.period === 'PM' && (
-                        <FontAwesome5 name="check" size={14} color="#3B82F6" />
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </TouchableOpacity>
-              </Modal>
-            </View>
-
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Feed Types & Amounts</Text>
               <View style={styles.feedTypesGrid}>
@@ -1498,130 +1730,43 @@ const FeedScreen = () => {
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
           <View style={styles.content}>
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Meal Type</Text>
-              <View style={styles.mealTypeContainer}>
-                {(['Breakfast', 'Lunch', 'Dinner'] as const).map((type) => (
-                  <TouchableOpacity
-                    key={type}
-                    style={[
-                      styles.mealTypeButton,
-                      mealType === type && styles.mealTypeButtonSelected,
-                      (isMealCompleted(type) || isMealTypeScheduled(type)) && styles.mealTypeButtonDisabled
-                    ]}
-                    onPress={() => {
-                      if (isMealCompleted(type)) {
-                        const completedInfo = getCompletedMealInfo(type);
-                        Alert.alert(
-                          'Cannot Select',
-                          `This ${type} has been completed by ${completedInfo?.fed_by} and cannot be modified.`,
-                          [{ text: 'OK' }]
-                        );
-                        return;
-                      }
-                      if (isMealTypeScheduled(type)) {
-                        Alert.alert(
-                          'Already Scheduled',
-                          `A ${type} schedule already exists. You cannot have multiple schedules for the same meal type.`,
-                          [{ text: 'OK' }]
-                        );
-                        return;
-                      }
-                      setMealType(type);
-                    }}
-                    disabled={isMealCompleted(type) || isMealTypeScheduled(type)}
-                  >
-                    <Text style={[
-                      styles.mealTypeButtonText,
-                      mealType === type && styles.mealTypeButtonTextSelected,
-                      (isMealCompleted(type) || isMealTypeScheduled(type)) && styles.mealTypeButtonTextDisabled
-                    ]}>
-                      {type}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Feeding Time</Text>
-              <View style={styles.timeInputContainer}>
-                <TextInput
-                  style={styles.timeInput}
-                  value={feedingTime.hour}
-                  onChangeText={(value) => handleTimeChange('hour', value)}
-                  placeholder="HH"
-                  keyboardType="numeric"
-                  maxLength={2}
-                />
-                <Text style={styles.timeSeparator}>:</Text>
-                <TextInput
-                  style={styles.timeInput}
-                  value={feedingTime.minute}
-                  onChangeText={(value) => handleTimeChange('minute', value)}
-                  placeholder="MM"
-                  keyboardType="numeric"
-                  maxLength={2}
-                />
+              <Text style={styles.sectionTitle}>Current Settings</Text>
+              <View style={styles.currentSettingsContainer}>
+                <View style={styles.settingRow}>
+                  <Text style={styles.settingLabel}>Meal Type:</Text>
+                  <Text style={styles.settingValue}>{mealType || 'Not Set'}</Text>
+                </View>
+                <View style={styles.settingRow}>
+                  <Text style={styles.settingLabel}>Feeding Time:</Text>
+                  <Text style={styles.settingValue}>
+                    {feedingTime.hour}:{feedingTime.minute} {feedingTime.period}
+                  </Text>
+                </View>
+                <View style={styles.settingRow}>
+                  <Text style={styles.settingLabel}>Selected Horses:</Text>
+                  <Text style={styles.settingValue}>
+                    {selectedHorses.filter(h => !h.is_deceased).length} horse(s)
+                  </Text>
+                </View>
+                <View style={styles.selectedHorsesList}>
+                  {selectedHorses.filter(h => !h.is_deceased).map((horse, index) => (
+                    <View key={horse.id} style={styles.horseBadge}>
+                      <FontAwesome5 name="horse-head" size={12} color="#CD853F" />
+                      <Text style={styles.horseBadgeText}>{horse.name}</Text>
+                    </View>
+                  ))}
+                </View>
                 <TouchableOpacity 
-                  style={styles.periodInput} 
-                  onPress={() => setShowPeriodDropdown(true)}
+                  style={styles.changeSettingsButton}
+                  onPress={() => {
+                    setShowAddView(false);
+                    handleOpenSettingsModal();
+                  }}
                 >
-                  <Text style={styles.periodInputText}>{feedingTime.period}</Text>
-                  <FontAwesome5 name="chevron-down" size={12} color="#64748B" />
+                  <FontAwesome5 name="cog" size={14} color="#3B82F6" />
+                  <Text style={styles.changeSettingsButtonText}>Change Settings</Text>
                 </TouchableOpacity>
               </View>
-              
-              <Modal
-                visible={showPeriodDropdown}
-                transparent={true}
-                animationType="fade"
-                onRequestClose={() => setShowPeriodDropdown(false)}
-              >
-                <TouchableOpacity 
-                  style={styles.modalOverlay} 
-                  activeOpacity={1} 
-                  onPress={() => setShowPeriodDropdown(false)}
-                >
-                  <View style={styles.dropdownContainer}>
-                    <TouchableOpacity
-                      style={[
-                        styles.dropdownOption,
-                        feedingTime.period === 'AM' && styles.dropdownOptionActive
-                      ]}
-                      onPress={() => {
-                        handleTimeChange('period', 'AM');
-                        setShowPeriodDropdown(false);
-                      }}
-                    >
-                      <Text style={[
-                        styles.dropdownOptionText,
-                        feedingTime.period === 'AM' && styles.dropdownOptionTextActive
-                      ]}>AM</Text>
-                      {feedingTime.period === 'AM' && (
-                        <FontAwesome5 name="check" size={14} color="#3B82F6" />
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.dropdownOption,
-                        feedingTime.period === 'PM' && styles.dropdownOptionActive
-                      ]}
-                      onPress={() => {
-                        handleTimeChange('period', 'PM');
-                        setShowPeriodDropdown(false);
-                      }}
-                    >
-                      <Text style={[
-                        styles.dropdownOptionText,
-                        feedingTime.period === 'PM' && styles.dropdownOptionTextActive
-                      ]}>PM</Text>
-                      {feedingTime.period === 'PM' && (
-                        <FontAwesome5 name="check" size={14} color="#3B82F6" />
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </TouchableOpacity>
-              </Modal>
             </View>
 
             <View style={styles.section}>
@@ -1661,10 +1806,10 @@ const FeedScreen = () => {
           <TouchableOpacity 
             style={[
               styles.saveButton,
-              !mealType && styles.saveButtonDisabled
+              (!mealType || feedTypes.every(feed => !feed.amount.trim()) || selectedHorses.filter(h => !h.is_deceased).length === 0) && styles.saveButtonDisabled
             ]} 
             onPress={handleSaveNewSchedule}
-            disabled={!mealType}
+            disabled={!mealType || feedTypes.every(feed => !feed.amount.trim()) || selectedHorses.filter(h => !h.is_deceased).length === 0}
           >
             <Text style={styles.saveButtonText}>Add Schedule</Text>
           </TouchableOpacity>
@@ -1720,9 +1865,12 @@ const FeedScreen = () => {
               <FontAwesome5 name="utensils" size={64} color="#E2E8F0" />
               <Text style={styles.emptyStateTitle}>No feeding schedule found</Text>
               <Text style={styles.emptyStateText}>
-                Add your first feeding schedule to get started.
+                Set your feeding time, meal type, and select horses first, then add a schedule.
               </Text>
-              <TouchableOpacity style={styles.addFirstScheduleButton} onPress={handleAddNewSchedule}>
+              <TouchableOpacity 
+                style={styles.addFirstScheduleButton} 
+                onPress={handleAddNewSchedule}
+              >
                 <FontAwesome5 name="plus" size={16} color="#fff" />
                 <Text style={styles.addFirstScheduleButtonText}>Add New Feeding Schedule</Text>
               </TouchableOpacity>
@@ -1749,6 +1897,12 @@ const FeedScreen = () => {
                     <View style={styles.mealActions}>
                       {!meal.completed && (
                         <>
+                          <TouchableOpacity 
+                            style={styles.editButton}
+                            onPress={() => handleEditScheduleSettings(meal)}
+                          >
+                            <FontAwesome5 name="clock" size={14} color="#3B82F6" />
+                          </TouchableOpacity>
                           <TouchableOpacity 
                             style={styles.editButton}
                             onPress={() => handleEdit(meal)}
@@ -1819,14 +1973,406 @@ const FeedScreen = () => {
               ))}
 
               {availableMealTypes.length > 0 && (
-                <TouchableOpacity style={styles.addScheduleButton} onPress={handleAddNewSchedule}>
-                  <Text style={styles.addScheduleButtonText}>Add Feeding Schedule</Text>
+                <TouchableOpacity 
+                  style={styles.addScheduleButton} 
+                  onPress={handleAddNewSchedule}
+                >
+                  <FontAwesome5 name="plus" size={16} color="#fff" />
+                  <Text style={styles.addScheduleButtonText}>Add New Feeding Schedule</Text>
                 </TouchableOpacity>
               )}
             </>
           )}
         </View>
       </ScrollView>
+
+      {/* Secondary Floating Action Button for Settings */}
+      <TouchableOpacity 
+        style={styles.secondaryFloatingButton}
+        onPress={handleOpenSettingsModal}
+      >
+        <FontAwesome5 name="cog" size={24} color="#fff" />
+      </TouchableOpacity>
+
+      {/* Settings Modal */}
+      <Modal
+        visible={showSettingsModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={handleCloseSettingsModal}
+      >
+        <View style={styles.settingsModalOverlay}>
+          <View style={styles.settingsModalContent}>
+            <View style={styles.settingsModalHeader}>
+              <Text style={styles.settingsModalTitle}>
+                {isEditingFromSettings ? 'Edit Feeding Time' : 'Schedule Settings'}
+              </Text>
+              <TouchableOpacity onPress={handleCloseSettingsModal}>
+                <FontAwesome5 name="times" size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.settingsModalBody}>
+              <View style={styles.settingsSection}>
+                <Text style={styles.settingsSectionTitle}>Horse Selection</Text>
+                <Text style={styles.settingsSectionSubtitle}>
+                  Choose which horses this schedule applies to (deceased horses are excluded)
+                </Text>
+                
+                <View style={styles.horseSelectionModeContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.selectionModeButton,
+                      horseSelectionMode === 'single' && styles.selectionModeButtonActive
+                    ]}
+                    onPress={() => handleHorseSelectionModeChange('single')}
+                  >
+                    <FontAwesome5 
+                      name="horse" 
+                      size={16} 
+                      color={horseSelectionMode === 'single' ? '#fff' : '#CD853F'} 
+                    />
+                    <Text style={[
+                      styles.selectionModeButtonText,
+                      horseSelectionMode === 'single' && styles.selectionModeButtonTextActive
+                    ]}>
+                      Single Horse
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.selectionModeButton,
+                      horseSelectionMode === 'multiple' && styles.selectionModeButtonActive
+                    ]}
+                    onPress={() => handleHorseSelectionModeChange('multiple')}
+                  >
+                    <FontAwesome5 
+                      name="horse" 
+                      size={16} 
+                      color={horseSelectionMode === 'multiple' ? '#fff' : '#3B82F6'} 
+                    />
+                    <Text style={[
+                      styles.selectionModeButtonText,
+                      horseSelectionMode === 'multiple' && styles.selectionModeButtonTextActive
+                    ]}>
+                      Multiple Horses
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                
+                {/* Select All Button */}
+                {horseSelectionMode === 'multiple' && (
+                  <TouchableOpacity
+                    style={styles.selectAllButton}
+                    onPress={handleSelectAllHorses}
+                  >
+                    <Checkbox
+                      value={selectAllHorses}
+                      onValueChange={handleSelectAllHorses}
+                      color={selectAllHorses ? '#3B82F6' : undefined}
+                    />
+                    <Text style={styles.selectAllButtonText}>
+                      Select All Horses ({availableHorses.filter(h => !h.is_deceased).length})
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                
+                {/* Horses List */}
+                <View style={styles.horsesListContainer}>
+                  {availableHorses.filter(h => !h.is_deceased).map((horse) => (
+                    <TouchableOpacity
+                      key={horse.id}
+                      style={[
+                        styles.horseItem,
+                        horse.selected && styles.horseItemSelected
+                      ]}
+                      onPress={() => handleToggleHorse(horse.id)}
+                      disabled={horseSelectionMode === 'single' && horse.selected}
+                    >
+                      <Checkbox
+                        value={horse.selected}
+                        onValueChange={() => handleToggleHorse(horse.id)}
+                        color={horse.selected ? '#3B82F6' : undefined}
+                        disabled={horseSelectionMode === 'single' && horse.selected}
+                      />
+                      <View style={styles.horseItemContent}>
+                        <Text style={[
+                          styles.horseItemName,
+                          horse.selected && styles.horseItemNameSelected,
+                          horse.id === horseId && styles.currentHorseName
+                        ]}>
+                          {horse.name}
+                          {horse.id === horseId && ' (Current)'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                  
+                  {/* Show deceased horses separately (disabled) */}
+                  {availableHorses.filter(h => h.is_deceased).length > 0 && (
+                    <View style={styles.deceasedHorsesSection}>
+                      <Text style={styles.deceasedHorsesTitle}>Deceased Horses (Unavailable)</Text>
+                      {availableHorses.filter(h => h.is_deceased).map((horse) => (
+                        <View key={horse.id} style={styles.deceasedHorseItem}>
+                          <FontAwesome5 name="times" size={14} color="#9CA3AF" />
+                          <Text style={styles.deceasedHorseName}>{horse.name}</Text>
+                          <Text style={styles.deceasedBadge}>Deceased</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+                
+                {/* Selected Horses Summary */}
+                {selectedHorses.filter(h => !h.is_deceased).length > 0 && (
+                  <View style={styles.selectedHorsesSummary}>
+                    <Text style={styles.selectedHorsesSummaryTitle}>
+                      Selected Horses ({selectedHorses.filter(h => !h.is_deceased).length}):
+                    </Text>
+                    <View style={styles.selectedHorsesChips}>
+                      {selectedHorses.filter(h => !h.is_deceased).slice(0, 3).map((horse) => (
+                        <View key={horse.id} style={styles.selectedHorseChip}>
+                          <FontAwesome5 name="horse-head" size={12} color="#CD853F" />
+                          <Text style={styles.selectedHorseChipText}>{horse.name}</Text>
+                        </View>
+                      ))}
+                      {selectedHorses.filter(h => !h.is_deceased).length > 3 && (
+                        <View style={styles.selectedHorseChip}>
+                          <Text style={styles.selectedHorseChipText}>
+                            +{selectedHorses.filter(h => !h.is_deceased).length - 3} more
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.settingsSection}>
+                <Text style={styles.settingsSectionTitle}>Meal Type</Text>
+                <Text style={styles.settingsSectionSubtitle}>
+                  {isEditingFromSettings ? 'Editing meal type:' : 'Select the meal type for your new schedule'}
+                </Text>
+                <View style={styles.mealTypeContainer}>
+                  {(['Breakfast', 'Lunch', 'Dinner'] as const).map((type) => (
+                    <TouchableOpacity
+                      key={type}
+                      style={[
+                        styles.mealTypeButton,
+                        mealType === type && styles.mealTypeButtonSelected,
+                        (isMealCompleted(type) || (isMealTypeScheduled(type) && !isEditingFromSettings)) && styles.mealTypeButtonDisabled
+                      ]}
+                      onPress={() => {
+                        if (isMealCompleted(type)) {
+                          const completedInfo = getCompletedMealInfo(type);
+                          Alert.alert(
+                            'Cannot Select',
+                            `This ${type} has been completed by ${completedInfo?.fed_by} and cannot be modified.`,
+                            [{ text: 'OK' }]
+                          );
+                          return;
+                        }
+                        if (isMealTypeScheduled(type) && !isEditingFromSettings) {
+                          Alert.alert(
+                            'Already Scheduled',
+                            `A ${type} schedule already exists. You cannot have multiple schedules for the same meal type.`,
+                            [{ text: 'OK' }]
+                          );
+                          return;
+                        }
+                        setMealType(type);
+                      }}
+                      disabled={(isMealCompleted(type) || (isMealTypeScheduled(type) && !isEditingFromSettings))}
+                    >
+                      <FontAwesome5 
+                        name={getMealIcon(type)} 
+                        size={16} 
+                        color={mealType === type ? '#fff' : (isMealCompleted(type) || (isMealTypeScheduled(type) && !isEditingFromSettings)) ? '#94A3B8' : '#CD853F'} 
+                      />
+                      <Text style={[
+                        styles.mealTypeButtonText,
+                        mealType === type && styles.mealTypeButtonTextSelected,
+                        (isMealCompleted(type) || (isMealTypeScheduled(type) && !isEditingFromSettings)) && styles.mealTypeButtonTextDisabled
+                      ]}>
+                        {type}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                
+                <View style={styles.mealTypeStatusContainer}>
+                  {['Breakfast', 'Lunch', 'Dinner'].map((type) => {
+                    if (isMealCompleted(type)) {
+                      const info = getCompletedMealInfo(type);
+                      return (
+                        <View key={type} style={styles.mealTypeStatusItem}>
+                          <FontAwesome5 name="check-circle" size={12} color="#10B981" />
+                          <Text style={styles.mealTypeStatusText}>
+                            {type}: Completed by {info?.fed_by}
+                          </Text>
+                        </View>
+                      );
+                    }
+                    if (isMealTypeScheduled(type) && !isEditingFromSettings) {
+                      return (
+                        <View key={type} style={styles.mealTypeStatusItem}>
+                          <FontAwesome5 name="clock" size={12} color="#3B82F6" />
+                          <Text style={styles.mealTypeStatusText}>
+                            {type}: Already scheduled
+                          </Text>
+                        </View>
+                      );
+                    }
+                    return null;
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.settingsSection}>
+                <Text style={styles.settingsSectionTitle}>Feeding Time</Text>
+                <Text style={styles.settingsSectionSubtitle}>
+                  {isEditingFromSettings ? 'Edit the feeding time for this schedule' : 'Set the time for this feeding schedule'}
+                </Text>
+                
+                <View style={styles.timeInputContainer}>
+                  <TextInput
+                    style={styles.timeInput}
+                    value={feedingTime.hour}
+                    onChangeText={(value) => handleTimeChange('hour', value)}
+                    placeholder="HH"
+                    keyboardType="numeric"
+                    maxLength={2}
+                  />
+                  <Text style={styles.timeSeparator}>:</Text>
+                  <TextInput
+                    style={styles.timeInput}
+                    value={feedingTime.minute}
+                    onChangeText={(value) => handleTimeChange('minute', value)}
+                    placeholder="MM"
+                    keyboardType="numeric"
+                    maxLength={2}
+                  />
+                  <TouchableOpacity 
+                    style={styles.periodInput} 
+                    onPress={() => setShowPeriodDropdown(true)}
+                  >
+                    <Text style={styles.periodInputText}>{feedingTime.period}</Text>
+                    <FontAwesome5 name="chevron-down" size={12} color="#64748B" />
+                  </TouchableOpacity>
+                </View>
+                
+                <Modal
+                  visible={showPeriodDropdown}
+                  transparent={true}
+                  animationType="fade"
+                  onRequestClose={() => setShowPeriodDropdown(false)}
+                >
+                  <TouchableOpacity 
+                    style={styles.modalOverlay} 
+                    activeOpacity={1} 
+                    onPress={() => setShowPeriodDropdown(false)}
+                  >
+                    <View style={styles.dropdownContainer}>
+                      <TouchableOpacity
+                        style={[
+                          styles.dropdownOption,
+                          feedingTime.period === 'AM' && styles.dropdownOptionActive
+                        ]}
+                        onPress={() => {
+                          handleTimeChange('period', 'AM');
+                          setShowPeriodDropdown(false);
+                        }}
+                      >
+                        <Text style={[
+                          styles.dropdownOptionText,
+                          feedingTime.period === 'AM' && styles.dropdownOptionTextActive
+                        ]}>AM</Text>
+                        {feedingTime.period === 'AM' && (
+                          <FontAwesome5 name="check" size={14} color="#3B82F6" />
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.dropdownOption,
+                          feedingTime.period === 'PM' && styles.dropdownOptionActive
+                        ]}
+                        onPress={() => {
+                          handleTimeChange('period', 'PM');
+                          setShowPeriodDropdown(false);
+                        }}
+                      >
+                        <Text style={[
+                          styles.dropdownOptionText,
+                          feedingTime.period === 'PM' && styles.dropdownOptionTextActive
+                        ]}>PM</Text>
+                        {feedingTime.period === 'PM' && (
+                          <FontAwesome5 name="check" size={14} color="#3B82F6" />
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                </Modal>
+              </View>
+
+              <View style={styles.settingsSection}>
+                <Text style={styles.settingsSectionTitle}>Current Settings</Text>
+                <View style={styles.currentSettingsDisplay}>
+                  <View style={styles.settingDisplayRow}>
+                    <FontAwesome5 name="horse" size={16} color="#64748B" />
+                    <Text style={styles.settingDisplayLabel}>Selected Horses:</Text>
+                    <Text style={styles.settingDisplayValue}>
+                      {selectedHorses.filter(h => !h.is_deceased).length} horse(s)
+                    </Text>
+                  </View>
+                  <View style={styles.settingDisplayRow}>
+                    <FontAwesome5 name="utensils" size={16} color="#64748B" />
+                    <Text style={styles.settingDisplayLabel}>Meal Type:</Text>
+                    <Text style={styles.settingDisplayValue}>{mealType || 'Not Set'}</Text>
+                  </View>
+                  <View style={styles.settingDisplayRow}>
+                    <FontAwesome5 name="clock" size={16} color="#64748B" />
+                    <Text style={styles.settingDisplayLabel}>Feeding Time:</Text>
+                    <Text style={styles.settingDisplayValue}>
+                      {feedingTime.hour}:{feedingTime.minute} {feedingTime.period}
+                    </Text>
+                  </View>
+                  {isEditingFromSettings && editingMealFromSettings && (
+                    <View style={styles.settingDisplayRow}>
+                      <FontAwesome5 name="info-circle" size={16} color="#3B82F6" />
+                      <Text style={styles.settingDisplayLabel}>Editing:</Text>
+                      <Text style={styles.settingDisplayValue}>
+                        {editingMealFromSettings.fd_meal_type} schedule
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            </ScrollView>
+            
+            <View style={styles.settingsModalFooter}>
+              <TouchableOpacity 
+                style={styles.settingsCancelButton}
+                onPress={handleCloseSettingsModal}
+              >
+                <Text style={styles.settingsCancelButtonText}>Close</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[
+                  styles.settingsApplyButton,
+                  (!mealType || selectedHorses.filter(h => !h.is_deceased).length === 0) && styles.settingsApplyButtonDisabled
+                ]}
+                onPress={handleApplySettings}
+                disabled={!mealType || selectedHorses.filter(h => !h.is_deceased).length === 0}
+              >
+                <Text style={styles.settingsApplyButtonText}>
+                  {isEditingFromSettings ? 'Save Time Change' : 'Apply Settings'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1899,6 +2445,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
+    paddingBottom: 120, // Extra padding for floating buttons
   },
   allCompletedAlert: {
     flexDirection: 'row',
@@ -1947,6 +2494,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 3,
+    marginBottom: 16,
   },
   addFirstScheduleButtonText: {
     color: '#fff',
@@ -2131,6 +2679,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#CD853F',
     paddingVertical: 16,
+    paddingHorizontal: 24,
     borderRadius: 16,
     marginTop: 20,
     marginBottom: 5,
@@ -2144,6 +2693,24 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+    marginLeft: 8,
+  },
+  secondaryFloatingButton: {
+    position: 'absolute',
+    right: 24,
+    bottom: 64,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    zIndex: 9,
   },
   section: {
     marginBottom: 24,
@@ -2164,10 +2731,230 @@ const styles = StyleSheet.create({
     color: '#1E293B',
     marginBottom: 16,
   },
+  // Settings Modal Styles
+  settingsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  settingsModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '85%',
+  },
+  settingsModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  settingsModalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  settingsModalBody: {
+    padding: 24,
+    paddingBottom: 0,
+  },
+  settingsModalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    gap: 12,
+  },
+  settingsSection: {
+    marginBottom: 24,
+  },
+  settingsSectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 8,
+  },
+  settingsSectionSubtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    marginBottom: 16,
+  },
+  // Horse Selection Mode Styles
+  horseSelectionModeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 16,
+  },
+  selectionModeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  selectionModeButtonActive: {
+    backgroundColor: '#3B82F6',
+    borderColor: '#3B82F6',
+  },
+  selectionModeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  selectionModeButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  // Select All Button
+  selectAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  selectAllButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#334155',
+    marginLeft: 12,
+  },
+  // Horses List
+  horsesListContainer: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 16,
+  },
+  horseItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  horseItemSelected: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  horseItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginLeft: 12,
+  },
+  horseItemName: {
+    fontSize: 14,
+    color: '#64748B',
+    marginLeft: 8,
+    flex: 1,
+  },
+  horseItemNameSelected: {
+    color: '#1E293B',
+    fontWeight: '600',
+  },
+  currentHorseName: {
+    color: '#CD853F',
+  },
+  // Deceased horses section
+  deceasedHorsesSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  deceasedHorsesTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  deceasedHorseItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+    marginBottom: 4,
+    opacity: 0.6,
+  },
+  deceasedHorseName: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginLeft: 12,
+    flex: 1,
+    textDecorationLine: 'line-through',
+  },
+  deceasedBadge: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    backgroundColor: '#9CA3AF',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  // Selected Horses Summary
+  selectedHorsesSummary: {
+    backgroundColor: '#F0F9FF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  selectedHorsesSummaryTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0369A1',
+    marginBottom: 12,
+  },
+  selectedHorsesChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  selectedHorseChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  selectedHorseChipText: {
+    fontSize: 12,
+    color: '#0369A1',
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  // Meal Type Styles
   mealTypeContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
+    marginBottom: 12,
   },
   mealTypeButton: {
     flex: 1,
@@ -2191,7 +2978,7 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   mealTypeButtonText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
     color: '#CD853F',
   },
@@ -2201,6 +2988,22 @@ const styles = StyleSheet.create({
   mealTypeButtonTextDisabled: {
     color: '#94A3B8',
   },
+  mealTypeStatusContainer: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+  },
+  mealTypeStatusItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  mealTypeStatusText: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  // Time Input Styles
   timeInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2280,6 +3083,129 @@ const styles = StyleSheet.create({
   dropdownOptionTextActive: {
     color: '#3B82F6',
   },
+  // Current Settings Display
+  currentSettingsDisplay: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  settingDisplayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  settingDisplayLabel: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '500',
+    marginLeft: 8,
+    marginRight: 12,
+  },
+  settingDisplayValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1E293B',
+    flex: 1,
+  },
+  // Settings Buttons
+  settingsCancelButton: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#94A3B8',
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    flex: 1,
+    alignItems: 'center',
+  },
+  settingsCancelButtonText: {
+    color: '#64748B',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  settingsApplyButton: {
+    backgroundColor: '#3B82F6',
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    flex: 1,
+    alignItems: 'center',
+  },
+  settingsApplyButtonDisabled: {
+    backgroundColor: '#9CA3AF',
+  },
+  settingsApplyButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  // Current Settings in Add View
+  currentSettingsContainer: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  settingLabel: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  settingValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  selectedHorsesList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  horseBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  horseBadgeText: {
+    fontSize: 12,
+    color: '#0369A1',
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  changeSettingsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  changeSettingsButtonText: {
+    color: '#3B82F6',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  // Feed Types Grid
   feedTypesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

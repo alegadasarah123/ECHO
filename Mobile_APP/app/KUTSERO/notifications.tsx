@@ -1,17 +1,17 @@
+"use client"
 
-
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Dimensions,
+  Image,
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  Modal,
-  Image,
   Platform,
   AppState,
 } from "react-native"
@@ -426,7 +426,7 @@ export async function checkScheduledTimesGlobal(userName: string) {
     const encodedUser = encodeURIComponent(userName);
     
     const response = await fetch(
-      `https://echo-ebl8.onrender.com/api/kutsero/check-current-schedules/?kutsero_id=${encodedUser}`
+      `http://192.168.31.58:8000/api/kutsero/check-current-schedules/?kutsero_id=${encodedUser}`
     );
     
     if (!response.ok) {
@@ -652,7 +652,7 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
     try {
       const encodedUser = encodeURIComponent(userName);
       const response = await fetch(
-        `https://echo-ebl8.onrender.com/api/kutsero/feed-water-notifications/?kutsero_id=${encodedUser}`
+        `http://192.168.31.58:8000/api/kutsero/feed-water-notifications/?kutsero_id=${encodedUser}`
       );
       
       if (!response.ok) {
@@ -726,7 +726,7 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
   const fetchAnnouncements = async () => {
     try {
       const encodedUser = encodeURIComponent(userName)
-      const apiUrl = `https://echo-ebl8.onrender.com/api/kutsero/announcements/?user=${encodedUser}`
+      const apiUrl = `http://192.168.31.58:8000/api/kutsero/announcements/?user=${encodedUser}`
 
       console.log("[v0] Fetching announcements from:", apiUrl)
 
@@ -1237,7 +1237,7 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
       return imageUrl
     }
 
-    const baseUrl = "https://echo-ebl8.onrender.com"
+    const baseUrl = "http://192.168.31.58:8000"
     const absoluteUrl = imageUrl.startsWith("/") ? `${baseUrl}${imageUrl}` : `${baseUrl}/${imageUrl}`
     return absoluteUrl
   }
