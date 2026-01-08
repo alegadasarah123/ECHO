@@ -1,4 +1,4 @@
-"use client"
+
 
 import Sidebar from "@/components/CtuSidebar"
 import { Bell, CheckCircle, Edit2, Eye, EyeOff, Plus, RefreshCw, Users, XCircle } from "lucide-react"
@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed";
+const API_BASE_URL = "https://echo-ebl8.onrender.com"
 
 const CtuSettings = () => {
   const [activeTab, setActiveTab] = useState("profile")

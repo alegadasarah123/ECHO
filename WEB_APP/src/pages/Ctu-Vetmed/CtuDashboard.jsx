@@ -1,4 +1,4 @@
-"use client"
+
 
 import Sidebar from "@/components/CtuSidebar"
 import { AlertTriangle, Bell, CheckCircle, ClipboardList, Clock, ExternalLink, Eye, MapPin, Phone, RefreshCw, User, X, XCircle } from "lucide-react"
@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed";
+const API_BASE_URL = "https://echo-ebl8.onrender.com"
 
 function CtuDashboard() {
   const navigate = useNavigate()

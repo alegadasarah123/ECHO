@@ -1,4 +1,4 @@
-"use client"
+
 
 import {
   AlertCircle,
@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed";
+const API_BASE_URL = "https://echo-ebl8.onrender.com"
 
 const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsRead }) => {
   const [notifications, setNotifications] = useState([]);
@@ -75,7 +75,7 @@ const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsR
   const markNotificationAsRead = async (notifId) => {
     try {
       console.log(`Marking notification ${notifId} as read`);
-      const response = await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+      const response = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/mark_notification_read/${notifId}/`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -102,7 +102,7 @@ const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsR
   const markAllNotificationsAsRead = async () => {
     try {
       console.log("Marking all notifications as read");
-      const response = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
+      const response = await fetch(`$https://echo-ebl8.onrender.com/api/ctu_vetmed/mark_all_notifications_read/`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -184,7 +184,7 @@ const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsR
       setError(null);
       
       console.log("Fetching notifications...");
-      const response = await fetch(`${API_BASE}/get_vetnotifications/`, {
+      const response = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/`, {
         method: "GET",
         credentials: "include",
       });
