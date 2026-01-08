@@ -1,3 +1,5 @@
+
+
 import { useFocusEffect, useRouter } from "expo-router"
 import * as SecureStore from "expo-secure-store"
 import { useCallback, useEffect, useState } from "react"
@@ -101,7 +103,6 @@ export default function HistoryScreen() {
   const [activeCount, setActiveCount] = useState(0)
   const [completedCount, setCompletedCount] = useState(0)
   const [userData, setUserData] = useState<UserData | null>(null)
-  const [refreshing, setRefreshing] = useState(false)
 
   // Modal states for detailed view
   const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null)
@@ -154,13 +155,11 @@ export default function HistoryScreen() {
   // Use useFocusEffect to reload data when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      console.log("History screen focused, initializing...")
       initializeScreen()
     }, []),
   )
 
   useEffect(() => {
-    console.log("History screen mounted, initializing...")
     initializeScreen()
   }, [])
 
@@ -170,18 +169,16 @@ export default function HistoryScreen() {
       setError(null)
 
       const userData = await loadUserData()
-      console.log("User data loaded:", !!userData)
 
       if (userData) {
         setUserData(userData)
 
         // Get kutsero_id from profile or fallback to user id
-        const kutseroId = userData.profile?.kutsero_id || userData.id
-        console.log("Using kutsero_id for history:", kutseroId)
+        const kutserroId = userData.profile?.kutsero_id || userData.id
+        console.log("Using kutsero_id for history:", kutserroId)
 
-        await fetchAssignmentHistory(kutseroId, userData.access_token)
+        await fetchAssignmentHistory(kutserroId, userData.access_token)
       } else {
-        console.log("No user data found, redirecting to login")
         setError("Unable to get user authentication. Please log in again.")
         Alert.alert("Session Expired", "Please log in again to view your history.", [
           {
@@ -200,11 +197,11 @@ export default function HistoryScreen() {
 
   const fetchAssignmentHistory = async (kutsero_id: string, accessToken: string) => {
     try {
-      console.log("Fetching assignment history for kutsero_id:", kutsero_id)
-      console.log("Access token available:", !!accessToken)
+      setLoading(true)
+      setError(null)
 
       // Fetch the assignment history for all horses the kutsero has ever worked with
-      const historyUrl = `${API_BASE_URL}/get_assignment_history/?kutsero_id=${kutsero_id}`
+      const historyUrl = `${API_BASE_URL}/assignment_history/?kutsero_id=${kutsero_id}`
       console.log("Fetching assignment history from URL:", historyUrl)
 
       const historyResponse = await fetch(historyUrl, {
@@ -233,7 +230,6 @@ export default function HistoryScreen() {
           return
         } else if (historyResponse.status === 404) {
           // No history available
-          console.log("No history found (404)")
           setHistoryEntries([])
           setTotalCount(0)
           setActiveCount(0)
@@ -245,36 +241,30 @@ export default function HistoryScreen() {
       }
 
       const historyData = await historyResponse.json()
-      console.log("Received assignment history data:", JSON.stringify(historyData, null, 2))
+      console.log("Received assignment history data:", historyData)
 
-      // FIXED: Check the correct response structure
       if (historyData.assignments && Array.isArray(historyData.assignments)) {
         // Show ALL history for all horses the kutsero has ever worked with
         const allHistory = historyData.assignments
 
-        console.log(`Found ${allHistory.length} history entries`)
+        console.log(`Showing ALL history: ${allHistory.length} total entries for all horses ever worked with`)
 
         if (allHistory.length > 0) {
           console.log("Sample entry:", allHistory[0])
         }
 
-        // FIXED: Use data from response if available, otherwise calculate
-        const allActiveCount = historyData.active_count !== undefined 
-          ? historyData.active_count 
-          : allHistory.filter((entry: HistoryEntry) => entry.isActive).length
-        
-        const allCompletedCount = historyData.completed_count !== undefined
-          ? historyData.completed_count
-          : allHistory.filter((entry: HistoryEntry) => !entry.isActive).length
+        // Calculate stats based on all history
+        const allActiveCount = allHistory.filter((entry: HistoryEntry) => entry.isActive).length
+        const allCompletedCount = allHistory.filter((entry: HistoryEntry) => !entry.isActive).length
 
         setHistoryEntries(allHistory)
-        setTotalCount(historyData.total_count || allHistory.length)
+        setTotalCount(allHistory.length)
         setActiveCount(allActiveCount)
         setCompletedCount(allCompletedCount)
 
         console.log(`Final stats: Total=${allHistory.length}, Active=${allActiveCount}, Completed=${allCompletedCount}`)
       } else {
-        console.log("No assignments found in history response or wrong structure", historyData)
+        console.log("No assignments found in history response")
         setHistoryEntries([])
         setTotalCount(0)
         setActiveCount(0)
@@ -305,6 +295,8 @@ export default function HistoryScreen() {
           },
         ],
       )
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -322,49 +314,35 @@ export default function HistoryScreen() {
 
   // Refresh function that reloads user data and history
   const handleRefresh = async () => {
-    try {
-      setRefreshing(true)
-      await initializeScreen()
-    } catch (error) {
-      console.error("Error during refresh:", error)
-    } finally {
-      setRefreshing(false)
-    }
+    await initializeScreen()
   }
 
   // Filter entries based on the selected filter
   const getFilteredEntries = () => {
-    if (historyEntries.length === 0) return []
-
     const now = new Date()
-    
+    const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()))
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
     switch (activeFilter) {
-      case "This Week": {
-        const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()))
-        startOfWeek.setHours(0, 0, 0, 0)
+      case "This Week":
         return historyEntries.filter((entry) => {
           const entryDate = new Date(entry.checkedInAt)
           return entryDate >= startOfWeek
         })
-      }
-      case "This Month": {
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+      case "This Month":
         return historyEntries.filter((entry) => {
           const entryDate = new Date(entry.checkedInAt)
           return entryDate >= startOfMonth
         })
-      }
       case "All Time":
       default:
         return historyEntries
     }
   }
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string, label = "") => {
     try {
       console.log("Formatting date:", dateString)
-
-      if (!dateString) return "Unknown Date"
 
       // Parse the date string directly
       const date = new Date(dateString)
@@ -375,7 +353,7 @@ export default function HistoryScreen() {
         throw new Error("Invalid date")
       }
 
-      // Get current date in local timezone
+      // Get current date in local timezone (already in Philippine timezone since you're in PH)
       const now = new Date()
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
       const yesterday = new Date(today)
@@ -394,6 +372,7 @@ export default function HistoryScreen() {
           month: "short",
           day: "numeric",
           year: "numeric",
+          timeZone: "Asia/Manila",
         })}`
       }
 
@@ -403,6 +382,7 @@ export default function HistoryScreen() {
           month: "short",
           day: "numeric",
           year: "numeric",
+          timeZone: "Asia/Manila",
         })}`
       }
 
@@ -412,29 +392,37 @@ export default function HistoryScreen() {
         month: "short",
         day: "numeric",
         year: "numeric",
+        timeZone: "Asia/Manila",
       })
     } catch (error) {
       console.error("Error formatting date:", error)
-      return dateString || "Unknown Date"
+      return dateString
     }
   }
 
   const formatTime = (dateString: string) => {
     try {
-      if (!dateString) return "N/A"
-
       console.log("Formatting time for:", dateString)
 
       // Parse the date string directly
       const date = new Date(dateString)
-      
+      console.log("Parsed date object:", date)
+      console.log("Is valid date:", !isNaN(date.getTime()))
+      console.log("Date in UTC:", date.toUTCString())
+      console.log("Date in local timezone:", date.toString())
+
       if (isNaN(date.getTime())) {
         throw new Error("Invalid date")
       }
 
-      // Format time in 12-hour format for Philippine time
-      const hours = date.getHours()
-      const minutes = date.getMinutes()
+      // Convert to Philippine timezone (+8 hours from UTC)
+      // Create a new date object adjusted for Philippine timezone
+      const philippineTime = new Date(date.getTime() + 8 * 60 * 60 * 1000) // Add 8 hours in milliseconds
+      console.log("Philippine time calculated:", philippineTime.toString())
+
+      // Format time in 12-hour format
+      const hours = philippineTime.getUTCHours() // Use UTC methods since we already adjusted
+      const minutes = philippineTime.getUTCMinutes()
       const ampm = hours >= 12 ? "PM" : "AM"
       const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours
       const formattedTime = `${displayHours}:${minutes.toString().padStart(2, "0")} ${ampm}`
@@ -443,24 +431,48 @@ export default function HistoryScreen() {
       return formattedTime
     } catch (error) {
       console.error("Error formatting time:", error)
-      return "N/A"
+      // Fallback: try to extract time from string manually
+      try {
+        const timeMatch = dateString.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/)
+        if (timeMatch) {
+          let hours = Number.parseInt(timeMatch[1])
+          const minutes = timeMatch[2]
+
+          // Add 8 hours for Philippine timezone if it looks like UTC
+          if (dateString.includes("T") || dateString.includes("Z")) {
+            hours = (hours + 8) % 24
+          }
+
+          const ampm = hours >= 12 ? "PM" : "AM"
+          const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours
+          return `${displayHours}:${minutes} ${ampm}`
+        }
+      } catch (fallbackError) {
+        console.error("Fallback formatting failed:", fallbackError)
+      }
+      return dateString
     }
   }
 
   const formatFullDateTime = (dateString: string) => {
     try {
-      if (!dateString) return "N/A"
-
       console.log("Formatting full datetime for:", dateString)
 
       // Parse the date string directly
       const date = new Date(dateString)
-      
+      console.log("Full datetime - parsed date object:", date)
+      console.log("Full datetime - is valid date:", !isNaN(date.getTime()))
+      console.log("Full datetime - date in UTC:", date.toUTCString())
+
       if (isNaN(date.getTime())) {
         throw new Error("Invalid date")
       }
 
-      // Format full datetime manually
+      // Convert to Philippine timezone (+8 hours from UTC)
+      const philippineTime = new Date(date.getTime() + 8 * 60 * 60 * 1000)
+      console.log("Full datetime - Philippine time calculated:", philippineTime.toString())
+
+      // Format full datetime manually to ensure correct timezone
       const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
       const months = [
         "January",
@@ -477,12 +489,12 @@ export default function HistoryScreen() {
         "December",
       ]
 
-      const weekday = weekdays[date.getDay()]
-      const month = months[date.getMonth()]
-      const day = date.getDate()
-      const year = date.getFullYear()
-      const hours = date.getHours()
-      const minutes = date.getMinutes()
+      const weekday = weekdays[philippineTime.getUTCDay()]
+      const month = months[philippineTime.getUTCMonth()]
+      const day = philippineTime.getUTCDate()
+      const year = philippineTime.getUTCFullYear()
+      const hours = philippineTime.getUTCHours()
+      const minutes = philippineTime.getUTCMinutes()
 
       const ampm = hours >= 12 ? "PM" : "AM"
       const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours
@@ -493,7 +505,7 @@ export default function HistoryScreen() {
       return formattedDateTime
     } catch (error) {
       console.error("Error formatting full date time:", error)
-      return dateString || "N/A"
+      return dateString
     }
   }
 
@@ -512,8 +524,8 @@ export default function HistoryScreen() {
       // Parse duration string like "6:30:00" or "6h 30m"
       const parts = duration.split(":")
       if (parts.length >= 2) {
-        const hours = parseInt(parts[0], 10)
-        const minutes = parseInt(parts[1], 10)
+        const hours = Number.parseInt(parts[0])
+        const minutes = Number.parseInt(parts[1])
         return `${hours}h ${minutes}m`
       }
       return duration
@@ -526,14 +538,14 @@ export default function HistoryScreen() {
   const filteredEntries = getFilteredEntries()
 
   // Group filtered entries by date
-  const groupedEntries: GroupedEntries = {}
-  filteredEntries.forEach(entry => {
+  const groupedEntries: GroupedEntries = filteredEntries.reduce((groups, entry) => {
     const date = formatDate(entry.checkedInAt)
-    if (!groupedEntries[date]) {
-      groupedEntries[date] = []
+    if (!groups[date]) {
+      groups[date] = []
     }
-    groupedEntries[date].push(entry)
-  })
+    groups[date].push(entry)
+    return groups
+  }, {} as GroupedEntries)
 
   // Calculate total hours worked from filtered entries
   const totalHoursWorked = filteredEntries.reduce((total, entry) => {
@@ -541,8 +553,8 @@ export default function HistoryScreen() {
       try {
         const parts = entry.workDuration.split(":")
         if (parts.length >= 2) {
-          const hours = parseInt(parts[0], 10)
-          const minutes = parseInt(parts[1], 10)
+          const hours = Number.parseInt(parts[0])
+          const minutes = Number.parseInt(parts[1])
           return total + hours + minutes / 60
         }
       } catch (error) {
@@ -736,7 +748,7 @@ export default function HistoryScreen() {
     )
   }
 
-  if (loading && !refreshing) {
+  if (loading) {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
@@ -828,82 +840,80 @@ export default function HistoryScreen() {
 
           {/* History Entries */}
           <ScrollView style={styles.entriesContainer} showsVerticalScrollIndicator={false}>
-            {Object.keys(groupedEntries).length > 0 ? (
-              Object.entries(groupedEntries).map(([date, entries]) => (
-                <View key={date}>
-                  {/* Date Header */}
-                  <View style={styles.dateContainer}>
-                    <Text style={styles.dateText}>{date}</Text>
-                  </View>
+            {Object.entries(groupedEntries).map(([date, entries]) => (
+              <View key={date}>
+                {/* Date Header */}
+                <View style={styles.dateContainer}>
+                  <Text style={styles.dateText}>{date}</Text>
+                </View>
 
-                  {/* Entries for this date */}
-                  {entries.map((entry) => (
-                    <TouchableOpacity
-                      key={entry.assignmentId}
-                      style={styles.historyEntry}
-                      onPress={() => handleEntryClick(entry)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.entryLeft}>
-                        <View style={styles.horseAvatar}>
-                          {entry.horse.image ? (
-                            <Image
-                              source={{ uri: entry.horse.image }}
-                              style={styles.horseAvatarImage}
-                              resizeMode="cover"
-                            />
-                          ) : (
-                            <Image
-                              source={require("../../assets/images/horse.png")}
-                              style={[styles.horseIconImage, { tintColor: "#C17A47" }]}
-                              resizeMode="contain"
-                            />
-                          )}
-                        </View>
-                        <View style={styles.actionIndicator}>
-                          <Text style={styles.actionIcon}>{getActionIcon(entry.isActive)}</Text>
-                        </View>
-                      </View>
-                      <View style={styles.entryContent}>
-                        <View style={styles.entryHeader}>
-                          <Text style={styles.horseName}>{entry.horse.name}</Text>
-                          <Text style={styles.tapHint}>Tap for details →</Text>
-                        </View>
-                        <Text style={styles.entryAction}>
-                          {entry.isActive ? "Currently Working" : "Work Session Completed"}
-                        </Text>
-                        <Text style={styles.horseDetails}>
-                          {entry.horse.breed} • {entry.horse.color} • {entry.horse.opName}
-                        </Text>
-                        {entry.workDuration && !entry.isActive && (
-                          <Text style={styles.durationText}>Duration: {formatWorkDuration(entry.workDuration)}</Text>
+                {/* Entries for this date */}
+                {entries.map((entry) => (
+                  <TouchableOpacity
+                    key={entry.assignmentId}
+                    style={styles.historyEntry}
+                    onPress={() => handleEntryClick(entry)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.entryLeft}>
+                      <View style={styles.horseAvatar}>
+                        {entry.horse.image ? (
+                          <Image
+                            source={{ uri: entry.horse.image }}
+                            style={styles.horseAvatarImage}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <Image
+                            source={require("../../assets/images/horse.png")}
+                            style={[styles.horseIconImage, { tintColor: "#C17A47" }]}
+                            resizeMode="contain"
+                          />
                         )}
-                        <View style={styles.statusContainer}>
-                          <View style={[styles.statusDot, { backgroundColor: getStatusColor(entry.isActive) }]} />
-                          <Text style={[styles.entryStatus, { color: getStatusColor(entry.isActive) }]}>
-                            {entry.status}
-                          </Text>
-                        </View>
                       </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              ))
-            ) : (
-              // Empty State
-              !loading && (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyStateText}>No activity history found</Text>
-                  <Text style={styles.emptyStateSubtext}>
-                    {activeFilter === "All Time"
-                      ? "Your horse assignments activity will appear here"
-                      : `No activity found for ${activeFilter.toLowerCase()}`}
-                  </Text>
-                  <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
-                    <Text style={styles.retryButtonText}>Retry</Text>
+                      <View style={styles.actionIndicator}>
+                        <Text style={styles.actionIcon}>{getActionIcon(entry.isActive)}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.entryContent}>
+                      <View style={styles.entryHeader}>
+                        <Text style={styles.horseName}>{entry.horse.name}</Text>
+                        <Text style={styles.tapHint}>Tap for details →</Text>
+                      </View>
+                      <Text style={styles.entryAction}>
+                        {entry.isActive ? "Currently Working" : "Work Session Completed"}
+                      </Text>
+                      <Text style={styles.horseDetails}>
+                        {entry.horse.breed} • {entry.horse.color} • {entry.horse.opName}
+                      </Text>
+                      {entry.workDuration && !entry.isActive && (
+                        <Text style={styles.durationText}>Duration: {formatWorkDuration(entry.workDuration)}</Text>
+                      )}
+                      <View style={styles.statusContainer}>
+                        <View style={[styles.statusDot, { backgroundColor: getStatusColor(entry.isActive) }]} />
+                        <Text style={[styles.entryStatus, { color: getStatusColor(entry.isActive) }]}>
+                          {entry.status}
+                        </Text>
+                      </View>
+                    </View>
                   </TouchableOpacity>
-                </View>
-              )
+                ))}
+              </View>
+            ))}
+
+            {/* Empty State */}
+            {filteredEntries.length === 0 && !loading && (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>No activity history found</Text>
+                <Text style={styles.emptyStateSubtext}>
+                  {activeFilter === "All Time"
+                    ? "Your horse assignments activity will appear here"
+                    : `No activity found for ${activeFilter.toLowerCase()}`}
+                </Text>
+                <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
+                  <Text style={styles.retryButtonText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
             )}
 
             {/* Error State */}

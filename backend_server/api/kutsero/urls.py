@@ -85,9 +85,9 @@ urlpatterns = [
     path('horse_owners/', views.get_horse_owners, name='get_horse_owners'),
     path('apply_to_owner/', views.apply_to_owner, name='apply_to_owner'),
     path('my_applications/', views.get_my_applications, name='get_my_applications'),
-    path('approved_owners_horses/', views.get_approved_owners_horses, name='get_approved_owners_horses'),
+    path('approved_horses/', views.get_approved_owners_horses, name='get_approved_owners_horses'),
     path('assign_horse/', views.assign_horse_to_kutsero, name='assign_horse_to_kutsero'),
-    path('test_horse_endpoint/', views.test_horse_owners_endpoint, name='test_horse_endpoint'),
+    path('test/', views.test_horse_owners_endpoint, name='test_endpoint'),
     
 
 ]
