@@ -569,7 +569,7 @@ function SignUp() {
 
       console.log("DEBUG: Sending form data with files");
 
-      const response = await fetch("https://echo-ebl8.onrender.com/api/signup_vet/", {
+      const response = await fetch("http://localhost:8000/api/signup_vet/", {
         method: "POST",
         body: formData
       });
