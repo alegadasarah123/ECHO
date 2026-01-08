@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://localhost:8000/api/ctu_vetmed"
+const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
 
 function CtuHealthReport() {
   const navigate = useNavigate()
@@ -475,12 +475,12 @@ const handleNotificationClick = async (notification) => {
     console.log("Loading statistics with params:", params.toString())
 
     return Promise.all([
-      fetch(`http://localhost:8000/api/ctu_vetmed/get_horse_statistics/?${params}`)
+      fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/get_horse_statistics/?${params}`)
         .then(res => {
           if (!res.ok) throw new Error("Failed to fetch monthly statistics");
           return res.json();
         }),
-      fetch(`http://localhost:8000/api/ctu_vetmed/get_statistics_summary/?${params}`)
+      fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/get_statistics_summary/?${params}`)
         .then(res => {
           if (!res.ok) {
             console.warn("Failed to fetch summary, will calculate from monthly data");
@@ -627,13 +627,13 @@ const handleNotificationClick = async (notification) => {
       // Fetch fresh data to ensure accuracy
       const [detailedData, freshStatistics] = await Promise.all([
         fetch(
-          `http://localhost:8000/api/ctu_vetmed/get_horse_statistics/?export_details=true&date_from=${dateFrom || ""}&date_to=${dateTo || ""}`,
+          `https://echo-ebl8.onrender.com/api/ctu_vetmed/get_horse_statistics/?export_details=true&date_from=${dateFrom || ""}&date_to=${dateTo || ""}`,
         ).then(res => {
           if (!res.ok) throw new Error("Failed to fetch detailed data");
           return res.json();
         }),
         fetch(
-          `http://localhost:8000/api/ctu_vetmed/get_statistics_summary/?date_from=${dateFrom || ""}&date_to=${dateTo || ""}`
+          `https://echo-ebl8.onrender.com/api/ctu_vetmed/get_statistics_summary/?date_from=${dateFrom || ""}&date_to=${dateTo || ""}`
         ).then(res => {
           if (!res.ok) {
             console.warn("Using current statistics for PDF");

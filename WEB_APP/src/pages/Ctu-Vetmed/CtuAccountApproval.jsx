@@ -24,7 +24,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://localhost:8000/api/ctu_vetmed"
+const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
 
 const SkeletonLoader = () => (
   <div className="animate-pulse">
@@ -404,7 +404,7 @@ function CtuAccountApproval() {
 
   const handleMarkAllAsRead = async () => {
     try {
-      const res = await fetch(`http://localhost:8000/mark_all_notifications_read/`, {
+      const res = await fetch(`https://echo-ebl8.onrender.com/mark_all_notifications_read/`, {
         method: "POST",
         credentials: "include",
         headers: {

@@ -23,7 +23,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "api.kutsero",
-    "api.kutsero_president",
+    
     "api.veterinarian",
     "api.horse_operator",
 ]

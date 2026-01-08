@@ -325,9 +325,8 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
     const pdf = new jsPDF();
     const { horse, medicalRecord, treatmentHistory } = data;
 
-    const logoLeft = "/Images/logo1.png";   // ✅ Your CTU logo
+    const logoLeft = "/Images/logo1.png";
 
-    // ✅ Convert image to BASE64
     const getBase64Image = (url) =>
       new Promise((resolve) => {
         const img = new Image();
@@ -348,17 +347,12 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
 
     pdf.setFont("helvetica");
 
-    // ✅ =============================
-    // ✅ NEW CTU HEADER DESIGN
-    // ✅ =============================
     let y = 15;
 
-    // Add CTU Logo
     if (baseLogo) {
       pdf.addImage(baseLogo, "PNG", 10, 8,  50, 45);
     }
 
-    // Header text layout
     pdf.setFontSize(10);
     pdf.setFont("helvetica", "normal");
     pdf.text("Republic of the Philippines", 105, y + 2, { align: "center" });
@@ -380,7 +374,6 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
       { align: "center" }
     );
 
-    // Record title
     pdf.setFontSize(13);
     pdf.setFont("helvetica", "bold");
     pdf.text(
@@ -390,18 +383,14 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
       { align: "center" }
     );
 
-    // Divider line
     pdf.setDrawColor(0);
     pdf.line(15, y + 38, 195, y + 38);
 
-    // ✅ NEW CLEAN SPACING BELOW HEADER
-    let yPosition = y + 65;   // ✅ improved spacing
+    let yPosition = y + 65;
 
-    // ✅ Color config
     const primaryColor = [0, 0, 0];
     const darkColor = [50, 50, 50];
 
-    // ✅ Helpers ------------------------------------------
     const parseLabImages = (labImgData) => {
       if (!labImgData) return [];
       try {
@@ -497,9 +486,6 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
       yPosition += 5;
     };
 
-    // ✅ =============================
-    // ✅ MAIN MEDICAL CONTENT
-    // ✅ =============================
     if (type === "medical") {
       addSection("Horse Information");
       addKeyValue("Name", horse?.horse_name);
@@ -561,9 +547,6 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
       }
     }
 
-    // ✅ =============================
-    // ✅ TREATMENT RECORD CONTENT
-    // ✅ =============================
     else {
       addSection("Horse Information");
       addKeyValue("Name", horse?.horse_name);
@@ -613,7 +596,6 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
       addKeyValue("Remarks", tData.treatment_remark);
     }
 
-    // ✅ Footer for all pages
     const pageCount = pdf.internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
       pdf.setPage(i);
@@ -630,7 +612,6 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
     return false;
   }
 };
-
 
 const MedicalRecordWithFollowups = ({ record, horse, onViewMedicalRecord }) => {
   const [showFollowups, setShowFollowups] = useState(false);
@@ -711,7 +692,8 @@ const MedicalRecordWithFollowups = ({ record, horse, onViewMedicalRecord }) => {
         
         <div className="flex items-center">
           <span className={`inline-flex items-center py-1.5 px-3 rounded-full text-xs font-semibold transition-all duration-200 ${
-            record.medrec_horsestatus?.toLowerCase() === "healthy" 
+            record.medrec_horsestatus?.toLowerCase() === "healthy" || 
+            record.medrec_horsestatus?.toLowerCase() === "assigned"
               ? "bg-green-100 text-green-800 border border-green-200"
               : record.medrec_horsestatus?.toLowerCase() === "sick"
                 ? "bg-orange-100 text-orange-800 border border-orange-200"
@@ -719,7 +701,7 @@ const MedicalRecordWithFollowups = ({ record, horse, onViewMedicalRecord }) => {
                   ? "bg-red-100 text-red-800 border border-red-200"
                   : "bg-gray-100 text-gray-600 border border-gray-200"
           }`}>
-            {record.medrec_horsestatus || "Unknown"}
+            {record.medrec_horsestatus === "assigned" ? "Healthy" : record.medrec_horsestatus || "Unknown"}
           </span>
         </div>
         
@@ -924,7 +906,8 @@ const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) 
             <div className="bg-white rounded-lg p-3 border border-blue-100">
               <p className="text-xs text-gray-500 mb-1">Horse Status</p>
               <span className={`inline-flex items-center py-1 px-3 rounded-full text-xs font-semibold ${
-                medicalRecord.medrec_horsestatus?.toLowerCase() === "healthy" 
+                medicalRecord.medrec_horsestatus?.toLowerCase() === "healthy" || 
+                medicalRecord.medrec_horsestatus?.toLowerCase() === "assigned"
                   ? "bg-green-100 text-green-800 border border-green-200"
                   : medicalRecord.medrec_horsestatus?.toLowerCase() === "sick"
                     ? "bg-orange-100 text-orange-800 border border-orange-200"
@@ -932,7 +915,7 @@ const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) 
                       ? "bg-red-100 text-red-800 border border-red-200"
                       : "bg-gray-100 text-gray-600 border border-gray-200"
               }`}>
-                {medicalRecord.medrec_horsestatus || "N/A"}
+                {medicalRecord.medrec_horsestatus === "assigned" ? "Healthy" : medicalRecord.medrec_horsestatus || "N/A"}
               </span>
             </div>
           </div>
@@ -1170,7 +1153,8 @@ const TreatmentHistoryDetailView = ({ treatmentHistory, horse, onBack, onExportP
             <div className="text-sm mb-2">
               <strong>Horse Status:</strong> 
               <span className={`inline-block py-0.5 px-2 rounded-xl text-xs font-medium ml-2 ${
-                treatmentHistory.parent_record?.medrec_horsestatus?.toLowerCase() === "healthy" 
+                treatmentHistory.parent_record?.medrec_horsestatus?.toLowerCase() === "healthy" || 
+                treatmentHistory.parent_record?.medrec_horsestatus?.toLowerCase() === "assigned"
                   ? "bg-green-100 text-green-800"
                   : treatmentHistory.parent_record?.medrec_horsestatus?.toLowerCase() === "sick"
                     ? "bg-orange-100 text-orange-800"
@@ -1178,7 +1162,7 @@ const TreatmentHistoryDetailView = ({ treatmentHistory, horse, onBack, onExportP
                       ? "bg-red-100 text-red-800"
                       : "bg-gray-100 text-gray-600"
               }`}>
-                {treatmentHistory.parent_record?.medrec_horsestatus || "N/A"}
+                {treatmentHistory.parent_record?.medrec_horsestatus === "assigned" ? "Healthy" : treatmentHistory.parent_record?.medrec_horsestatus || "N/A"}
               </span>
             </div>
           
@@ -1275,6 +1259,12 @@ const HorseDetailView = ({ horse, onBack, onViewMedicalRecord, onViewTreatmentHi
     return `${height} hands`;
   };
 
+  const getHorseStatusDisplay = (status) => {
+    const lowerStatus = status?.toLowerCase();
+    if (lowerStatus === "assigned") return "Healthy";
+    return status || "No Status";
+  };
+
   const transformMedicalRecords = () => {
     if (!horse.horse_medical_record || horse.horse_medical_record.length === 0) {
       return {
@@ -1362,7 +1352,8 @@ const HorseDetailView = ({ horse, onBack, onViewMedicalRecord, onViewTreatmentHi
             
             <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2">
               <span className={`inline-block py-1 px-3 rounded-full border shadow-sm text-xs font-semibold ${
-                horse.horse_status?.toLowerCase() === "healthy" 
+                horse.horse_status?.toLowerCase() === "healthy" || 
+                horse.horse_status?.toLowerCase() === "assigned"
                   ? "bg-green-100 text-green-800 border-green-200"
                   : horse.horse_status?.toLowerCase() === "sick"
                     ? "bg-orange-100 text-orange-800 border-orange-200"
@@ -1370,7 +1361,7 @@ const HorseDetailView = ({ horse, onBack, onViewMedicalRecord, onViewTreatmentHi
                       ? "bg-red-100 text-red-800 border-red-200"
                       : "bg-gray-100 text-gray-800 border-gray-200"
               }`}>
-                {horse.horse_status || "No Status"}
+                {getHorseStatusDisplay(horse.horse_status)}
               </span>
             </div>
           </div>
@@ -1545,235 +1536,221 @@ function CtuHorseRecord() {
     }
   };
 
-// HANDLE INDIVIDUAL NOTIFICATION CLICK - CTU VERSION WITH HORSE OPERATOR & KUTSERO
-const handleNotificationClick = async (notification) => {
-  const notifId = notification?.notif_id || notification?.id;
+  const handleNotificationClick = async (notification) => {
+    const notifId = notification?.notif_id || notification?.id;
 
-  if (!notifId) {
-    console.warn("Notification ID is missing:", notification);
-  }
+    if (!notifId) {
+      console.warn("Notification ID is missing:", notification);
+    }
 
-  // Mark as read in frontend immediately
-  setNotifications((prev) =>
-    prev.map((notif) =>
-      notif.notif_id === notifId || notif.id === notifId
-        ? { ...notif, read: true }
-        : notif
-    )
-  );
+    setNotifications((prev) =>
+      prev.map((notif) =>
+        notif.notif_id === notifId || notif.id === notifId
+          ? { ...notif, read: true }
+          : notif
+      )
+    );
 
-  // Mark as read in backend (only if valid ID)
-  if (notifId) {
-    try {
-      await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
-        method: "POST",
-        credentials: "include",
+    if (notifId) {
+      try {
+        await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+          method: "POST",
+          credentials: "include",
+        });
+      } catch (err) {
+        console.error("Error marking notification as read:", err);
+      }
+    }
+
+    const message = (notification.message || "").toLowerCase();
+    const type = (notification.type || "").toLowerCase();
+
+    if (
+      type === "sos_emergency" ||
+      message.includes("sos") ||
+      message.includes("emergency") ||
+      message.includes("reported") ||
+      message.includes("urgent") ||
+      (message.includes("horse") && 
+       (message.includes("colic") || 
+        message.includes("injured") || 
+        message.includes("trauma")))
+    ) {
+      let sosId = null;
+      if (notification.related_id && notification.related_id.startsWith("sos_")) {
+        sosId = notification.related_id.replace("sos_", "");
+      }
+      
+      navigate("/CtuDashboard", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+          sosId: sosId,
+        },
       });
-    } catch (err) {
-      console.error("Error marking notification as read:", err);
+      return;
     }
-  }
 
-  const message = (notification.message || "").toLowerCase();
-  const type = (notification.type || "").toLowerCase();
-
-  // Navigate for SOS emergency notifications
-  if (
-    type === "sos_emergency" ||
-    message.includes("sos") ||
-    message.includes("emergency") ||
-    message.includes("reported") ||
-    message.includes("urgent") ||
-    (message.includes("horse") && 
-     (message.includes("colic") || 
-      message.includes("injured") || 
-      message.includes("trauma")))
-  ) {
-    let sosId = null;
-    if (notification.related_id && notification.related_id.startsWith("sos_")) {
-      sosId = notification.related_id.replace("sos_", "");
+    if (
+      message.includes("veterinarian") && 
+      (message.includes("registration") ||
+       message.includes("approved") ||
+       message.includes("declined") ||
+       message.includes("pending") ||
+       message.includes("needs approval") ||
+       message.includes("vet "))
+    ) {
+      navigate("/CtuAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+          tab: "veterinarian",
+        },
+      });
+      return;
     }
+
+    if (
+      message.includes("horse-operator") ||
+      message.includes("horse operator") ||
+      (message.includes("horse") && message.includes("operator") && 
+       (message.includes("registration") || 
+        message.includes("approved") || 
+        message.includes("declined") || 
+        message.includes("pending"))) ||
+      (type === "registration" && message.includes("horse"))
+    ) {
+      navigate("/CtuAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+          tab: "horse-operator",
+        },
+      });
+      return;
+    }
+
+    if (
+      message.includes("kutsero") ||
+      (message.includes("registration") && message.includes("kutsero")) ||
+      (message.includes("kutsero") && 
+       (message.includes("approved") || 
+        message.includes("declined") || 
+        message.includes("pending"))) ||
+      (type === "registration" && message.includes("kutsero"))
+    ) {
+      navigate("/CtuAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+          tab: "kutsero",
+        },
+      });
+      return;
+    }
+
+    if (
+      message.includes("new registration") ||
+      message.includes("needs approval") ||
+      message.includes("registration:") ||
+      (message.includes("registration") && 
+       (message.includes("approved") || 
+        message.includes("declined") || 
+        message.includes("pending"))) ||
+      type === "registration"
+    ) {
+      navigate("/CtuAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
+
+    if (
+      message.includes("medical record") ||
+      message.includes("medical access") ||
+      message.includes("requested access") ||
+      message.includes("medrec") ||
+      (message.includes("record") && message.includes("access"))
+    ) {
+      navigate("/CtuDashboard", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+          section: "medical-records",
+        },
+      });
+      return;
+    }
+
+    if (message.includes("comment") || type === "comment" || type === "comment_notification") {
+      navigate("/CtuAnnouncement", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
+
+    if (
+      message.includes("appointment") ||
+      message.includes("schedule") ||
+      type.includes("appointment")
+    ) {
+      navigate("/CtuDashboard", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+          section: "appointments",
+        },
+      });
+      return;
+    }
+
+    if (
+      type === "vet_status_update" ||
+      type === "vet_registration" ||
+      (message.includes("vet") && 
+       (message.includes("status") || message.includes("update")))
+    ) {
+      navigate("/CtuAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+          tab: "veterinarian",
+        },
+      });
+      return;
+    }
+
+    if (
+      type === "sos_status_update" ||
+      message.includes("responded") ||
+      message.includes("resolved") ||
+      message.includes("cancelled")
+    ) {
+      navigate("/CtuDashboard", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+          section: "sos",
+        },
+      });
+      return;
+    }
+
+    console.log("Notification clicked but no specific action:", notification);
     
     navigate("/CtuDashboard", {
       state: {
         highlightedNotification: notification,
         shouldHighlight: true,
-        sosId: sosId,
       },
     });
-    return;
-  }
-
-  // VETERINARIAN Account Approvals - SPECIFIC
-  if (
-    message.includes("veterinarian") && 
-    (message.includes("registration") ||
-     message.includes("approved") ||
-     message.includes("declined") ||
-     message.includes("pending") ||
-     message.includes("needs approval") ||
-     message.includes("vet "))
-  ) {
-    navigate("/CtuAccountApproval", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-        tab: "veterinarian", // ADDED: Specify veterinarian tab
-      },
-    });
-    return;
-  }
-
-  // HORSE OPERATOR Account Approvals - NEW FOR CTU
-  if (
-    message.includes("horse-operator") ||
-    message.includes("horse operator") ||
-    (message.includes("horse") && message.includes("operator") && 
-     (message.includes("registration") || 
-      message.includes("approved") || 
-      message.includes("declined") || 
-      message.includes("pending"))) ||
-    (type === "registration" && message.includes("horse"))
-  ) {
-    navigate("/CtuAccountApproval", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-        tab: "horse-operator", // ADDED: Specify horse-operator tab
-      },
-    });
-    return;
-  }
-
-  // KUTSERO Account Approvals - NEW FOR CTU
-  if (
-    message.includes("kutsero") ||
-    (message.includes("registration") && message.includes("kutsero")) ||
-    (message.includes("kutsero") && 
-     (message.includes("approved") || 
-      message.includes("declined") || 
-      message.includes("pending"))) ||
-    (type === "registration" && message.includes("kutsero"))
-  ) {
-    navigate("/CtuAccountApproval", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-        tab: "kutsero", // ADDED: Specify kutsero tab
-      },
-    });
-    return;
-  }
-
-  // GENERAL REGISTRATION (catch-all for any registration type)
-  if (
-    message.includes("new registration") ||
-    message.includes("needs approval") ||
-    message.includes("registration:") ||
-    (message.includes("registration") && 
-     (message.includes("approved") || 
-      message.includes("declined") || 
-      message.includes("pending"))) ||
-    type === "registration"
-  ) {
-    navigate("/CtuAccountApproval", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
-
-  // MEDICAL RECORD ACCESS REQUESTS
-  if (
-    message.includes("medical record") ||
-    message.includes("medical access") ||
-    message.includes("requested access") ||
-    message.includes("medrec") ||
-    (message.includes("record") && message.includes("access"))
-  ) {
-    navigate("/CtuDashboard", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-        section: "medical-records", // Optional: specify section
-      },
-    });
-    return;
-  }
-
-  // COMMENT NOTIFICATIONS
-  if (message.includes("comment") || type === "comment" || type === "comment_notification") {
-    navigate("/CtuAnnouncement", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
-
-  // APPOINTMENT NOTIFICATIONS (if CTU has appointment management)
-  if (
-    message.includes("appointment") ||
-    message.includes("schedule") ||
-    type.includes("appointment")
-  ) {
-    navigate("/CtuDashboard", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-        section: "appointments",
-      },
-    });
-    return;
-  }
-
-  // VET STATUS UPDATES (approved/declined notifications for admins)
-  if (
-    type === "vet_status_update" ||
-    type === "vet_registration" ||
-    (message.includes("vet") && 
-     (message.includes("status") || message.includes("update")))
-  ) {
-    navigate("/CtuAccountApproval", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-        tab: "veterinarian",
-      },
-    });
-    return;
-  }
-
-  // SOS STATUS UPDATES (responded/resolved/cancelled)
-  if (
-    type === "sos_status_update" ||
-    message.includes("responded") ||
-    message.includes("resolved") ||
-    message.includes("cancelled")
-  ) {
-    navigate("/CtuDashboard", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-        section: "sos",
-      },
-    });
-    return;
-  }
-
-  console.log("Notification clicked but no specific action:", notification);
-  
-  // DEFAULT: Go to dashboard for other notifications
-  navigate("/CtuDashboard", {
-    state: {
-      highlightedNotification: notification,
-      shouldHighlight: true,
-    },
-  });
-};
+  };
 
   const handleNotificationsUpdate = (updatedNotifications) => {
     console.log("Notifications updated from modal:", updatedNotifications);
@@ -1846,11 +1823,20 @@ const handleNotificationClick = async (notification) => {
     if (areaFilter !== "all") {
       filtered = filtered.filter((horse) => horse.location.toLowerCase().includes(areaFilter.toLowerCase()))
     }
+    
+    // FIXED: Treat "assigned" as "healthy" for filtering
     if (statusFilter !== "all") {
-      filtered = filtered.filter((horse) => 
-        horse.horse_status?.toLowerCase() === statusFilter.toLowerCase()
-      )
+      filtered = filtered.filter((horse) => {
+        const horseStatus = horse.horse_status?.toLowerCase();
+        const filterStatus = statusFilter.toLowerCase();
+        
+        if (filterStatus === "healthy") {
+          return horseStatus === "healthy" || horseStatus === "assigned";
+        }
+        return horseStatus === filterStatus;
+      })
     }
+    
     if (searchTerm) {
       filtered = filtered.filter(
         (horse) =>
@@ -2041,6 +2027,7 @@ const handleNotificationClick = async (notification) => {
               ) : (
                 currentFilteredHorseRecords.map((horse, index) => {
                   const horseStatus = horse.horse_status || "No Status"
+                  const displayStatus = horseStatus === "assigned" ? "Healthy" : horseStatus
 
                   return (
                     <div
@@ -2053,7 +2040,7 @@ const handleNotificationClick = async (notification) => {
                       <div className="text-sm flex items-center">{horse.location || "N/A"}</div>
                       <div className="flex items-center">
                         <span className={`inline-block py-1 px-2 rounded-xl text-xs font-medium ${
-                          horseStatus.toLowerCase() === "healthy" 
+                          horseStatus.toLowerCase() === "healthy" || horseStatus.toLowerCase() === "assigned"
                             ? "bg-green-100 text-green-800"
                             : horseStatus.toLowerCase() === "sick"
                               ? "bg-orange-100 text-orange-800"
@@ -2061,7 +2048,7 @@ const handleNotificationClick = async (notification) => {
                                 ? "bg-red-100 text-red-800"
                                 : "bg-gray-100 text-gray-600"
                         }`}>
-                          {horseStatus}
+                          {displayStatus}
                         </span>
                       </div>
                       <div className="flex items-center justify-center">

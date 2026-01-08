@@ -32,7 +32,7 @@ import NotificationModal from "./CtuNotif"
 const initialDirectoryData = []
 const initialNotifications = []
 
-const API_BASE = "http://localhost:8000/api/ctu_vetmed";
+const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed";
 
 function CtuDirectory() {
   const navigate = useNavigate()
@@ -376,7 +376,7 @@ const handleNotificationClick = async (notification) => {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("http://localhost:8000/api/ctu_vetmed/get_vetnotifications/")
+    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -489,7 +489,7 @@ const handleNotificationClick = async (notification) => {
   const handleView = async (person) => {
     try {
       // Optional: fetch full data from API if not already complete
-      const response = await fetch("http://localhost:8000/api/ctu_vetmed/get_directory_profiles/", {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_directory_profiles/", {
         method: "GET",
         credentials: "include",
       })
@@ -529,7 +529,7 @@ const handleNotificationClick = async (notification) => {
   const loadDirectoryData = async () => {
     try {
       setLoading(true)
-      const response = await fetch("http://localhost:8000/api/ctu_vetmed/get_directory_profiles/", {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_directory_profiles/", {
         method: "GET",
         credentials: "include",
       })
