@@ -648,55 +648,94 @@ const proceedWithApplication = async (owner: HorseOwner) => {
     )
   }
 
-  const assignHorseToKutsero = async (horse: AvailableHorse) => {
-    if (!userData || !userData.profile?.kutsero_id) {
-      Alert.alert("Error", "User information not available")
-      return
+ const assignHorseToKutsero = async (horse: AvailableHorse) => {
+  if (!userData || !userData.profile?.kutsero_id) {
+    Alert.alert("Error", "User information not available")
+    return
+  }
+  
+  setIsAssigning(true)
+  try {
+    console.log("DEBUG: Assigning horse", {
+      horse_id: horse.id,
+      op_id: horse.owner_id,
+      kutsero_id: userData.profile.kutsero_id
+    })
+    
+    const url = `${API_BASE_URL}/assign_horse_to_kutsero/`
+    console.log("DEBUG: Calling URL:", url)
+    
+    const payload = {
+      horse_id: horse.id,
+      op_id: horse.owner_id,
+      kutsero_id: userData.profile.kutsero_id,
+      date_start: new Date().toISOString()
     }
     
-    setIsAssigning(true)
+    console.log("DEBUG: Payload:", payload)
+    
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload)
+    })
+    
+    // First, check what type of response we got
+    const contentType = response.headers.get('content-type')
+    console.log("DEBUG: Response status:", response.status)
+    console.log("DEBUG: Content-Type:", contentType)
+    
+    let responseText = await response.text()
+    console.log("DEBUG: Raw response (first 500 chars):", responseText.substring(0, 500))
+    
+    let data
     try {
-      const response = await fetch(`${API_BASE_URL}/assign_horse_to_kutsero/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          horse_id: horse.id,
-          op_id: horse.owner_id,
-          kutsero_id: userData.profile.kutsero_id,
-          date_start: new Date().toISOString()
-        })
-      })
-      
-      const data = await response.json()
-      
-      console.log("DEBUG: Assign horse response:", data)
-      
-      if (response.ok && data.success) {
-        Alert.alert("Success", data.message, [
-          {
-            text: "OK",
-            onPress: () => {
-              // Go back to previous screen
-              router.back()
-            }
-          }
-        ])
-      } else {
-        Alert.alert(
-          "Assignment Failed",
-          data.error || "Failed to assign horse. Please try again.",
-          [{ text: "OK" }]
-        )
+      data = JSON.parse(responseText)
+    } catch (parseError) {
+      console.log("DEBUG: Failed to parse as JSON")
+      if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+        console.log("DEBUG: Server returned HTML instead of JSON")
+        // Extract any error message from HTML if possible
+        const errorMatch = responseText.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i) || 
+                           responseText.match(/<body[^>]*>([\s\S]*?)<\/body>/i) ||
+                           responseText.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)
+        
+        throw new Error(`Server error (HTML response). Status: ${response.status}. ${errorMatch ? 'Message: ' + errorMatch[1].substring(0, 100) : ''}`)
       }
-    } catch (error) {
-      console.error("Error assigning horse:", error)
-      Alert.alert("Error", "Failed to assign horse. Please check your connection and try again.")
-    } finally {
-      setIsAssigning(false)
+      throw new Error(`Invalid response from server: ${responseText.substring(0, 100)}`)
     }
+    
+    console.log("DEBUG: Parsed response data:", data)
+    
+    if (response.ok && data.success) {
+      Alert.alert("Success", data.message, [
+        {
+          text: "OK",
+          onPress: () => {
+            // Go back to previous screen
+            router.back()
+          }
+        }
+      ])
+    } else {
+      Alert.alert(
+        "Assignment Failed",
+        data.error || "Failed to assign horse. Please try again.",
+        [{ text: "OK" }]
+      )
+    }
+  } catch (error: any) {
+    console.error("Error assigning horse:", error)
+    Alert.alert(
+      "Error", 
+      error.message || "Failed to assign horse. Please check your connection and try again."
+    )
+  } finally {
+    setIsAssigning(false)
   }
+}
 
   const getApplicationStatusColor = (status: string) => {
     switch (status) {
