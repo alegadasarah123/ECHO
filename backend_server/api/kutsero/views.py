@@ -5302,8 +5302,8 @@ def get_approved_owners_horses(request):
                     print(f"DEBUG: Skipping deceased horse: {horse.get('horse_name')}")
                     continue
                 
-                # Check if horse is already assigned (using horse_assignment table) - FIXED TABLE NAME
-                assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse['horse_id']).eq("status", "active").execute()
+                # Check if horse is already assigned (using horse_assignment table) - Check for active assignments (date_end is null)
+                assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse['horse_id']).is_("date_end", "null").execute()
                 is_assigned = bool(assignment_response.data)
                 
                 # Check if assigned to this specific kutsero
@@ -5402,8 +5402,8 @@ def assign_horse_to_kutsero(request):
                 'error': 'Horse is not available for assignment'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Check if horse is already assigned to someone else - FIXED TABLE NAME
-        assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse_id).eq("status", "active").execute()
+        # Check if horse is already assigned to someone else - Check for active assignments (date_end is null)
+        assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse_id).is_("date_end", "null").execute()
         
         if assignment_response.data:
             assignment = assignment_response.data[0]
@@ -5418,15 +5418,14 @@ def assign_horse_to_kutsero(request):
                     'error': 'This horse is already assigned to you'
                 }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Create assignment record - FIXED TABLE NAME
-        assignment_id = str(uuid.uuid4())
+        # Create assignment record - Match your schema
+        assign_id = str(uuid.uuid4())
         assignment_data = {
-            'assignment_id': assignment_id,
+            'assign_id': assign_id,
             'horse_id': horse_id,
             'kutsero_id': kutsero_id,
-            'op_id': op_id,
             'date_start': datetime.now().isoformat(),
-            'status': 'active',
+            'date_end': None,  # Active assignment, no end date
             'created_at': datetime.now().isoformat(),
             'updated_at': datetime.now().isoformat()
         }
@@ -5455,7 +5454,7 @@ def assign_horse_to_kutsero(request):
                 'age': horse['horse_age'],
                 'image': horse.get('horse_image')
             },
-            'assignment_id': assignment_id
+            'assignment_id': assign_id
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
