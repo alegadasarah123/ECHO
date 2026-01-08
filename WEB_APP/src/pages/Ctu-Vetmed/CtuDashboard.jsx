@@ -1,4 +1,4 @@
-"use client"
+
 
 import Sidebar from "@/components/CtuSidebar"
 import { AlertTriangle, Bell, CheckCircle, ClipboardList, Clock, ExternalLink, Eye, MapPin, Phone, RefreshCw, User, X, XCircle } from "lucide-react"
@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://localhost:8000/api/ctu_vetmed";
+const API_BASE_URL = "https://echo-ebl8.onrender.com"
 
 function CtuDashboard() {
   const navigate = useNavigate()
@@ -159,7 +159,7 @@ function CtuDashboard() {
   const loadStats = useCallback(() => {
     setStatsLoading(true);
 
-    fetch("http://localhost:8000/api/ctu_vetmed/get_status_counts/", {
+    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_status_counts/", {
       method: "GET",
       credentials: "include",
       headers: {
@@ -188,7 +188,7 @@ function CtuDashboard() {
   const loadRecentActivities = useCallback(() => {
     setActivitiesLoading(true);
 
-    fetch("http://localhost:8000/api/ctu_vetmed/get_recent_activity/", {
+    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_recent_activity/", {
       method: "GET",
       credentials: "include",
     })
@@ -222,7 +222,7 @@ function CtuDashboard() {
 
   const loadNotifications = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/get_vetnotifications/`, {
+      const response = await fetch(`https://echo-ebl8.onrender.com/get_vetnotifications/`, {
         method: "GET",
         credentials: "include",
       })
@@ -250,7 +250,7 @@ function CtuDashboard() {
   const loadSosEmergencies = useCallback(() => {
     setSosLoading(true);
 
-    fetch("http://localhost:8000/api/ctu_vetmed/get_sos_requests/", {
+    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_sos_requests/", {
       method: "GET",
       credentials: "include",
     })

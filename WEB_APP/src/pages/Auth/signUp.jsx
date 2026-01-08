@@ -1,4 +1,4 @@
-import {AlertCircle,ArrowLeft,Check,Eye,EyeOff,FileText,Lock,MapPin,Stethoscope,Upload,User,X,ZoomIn} from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, Eye, EyeOff, FileText, Lock, MapPin, Stethoscope, Upload, User, X, ZoomIn } from "lucide-react";
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 

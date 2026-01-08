@@ -544,28 +544,64 @@ def get_recent_activity(request):
 
 
 # -------------------- GET STATUS COUNTS --------------------
-# -------------------- GET STATUS COUNTS --------------------
 @api_view(["GET"])
 @login_required
 def get_status_counts(request):
     try:
         # ✅ Create Supabase client
-        sr_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
-
-        # ✅ Fetch vet profiles with related user status
-        response = sr_client.table("vet_profile").select("vet_id, users(status)").execute()
-
-        if not response.data:
-            return Response({"pending": 0, "approved": 0, "declined": 0}, status=200)
+        sr_client = create_client(
+            settings.SUPABASE_URL,
+            settings.SUPABASE_SERVICE_ROLE_KEY
+        )
 
         # ✅ Initialize counts
-        counts = {"pending": 0, "approved": 0, "declined": 0}
+        counts = {
+            "pending": 0,
+            "approved": 0,
+            "declined": 0
+        }
 
-        # ✅ Count based on status
-        for row in response.data:
-            user_status = row.get("users", {}).get("status", "").lower()
-            if user_status in counts:
-                counts[user_status] += 1
+        # -------------------- VET PROFILES --------------------
+        vet_response = (
+            sr_client
+            .table("vet_profile")
+            .select("vet_id, users(status)")
+            .execute()
+        )
+
+        if vet_response.data:
+            for row in vet_response.data:
+                status = row.get("users", {}).get("status", "").lower()
+                if status in counts:
+                    counts[status] += 1
+
+        # -------------------- HORSE OPERATOR PROFILES --------------------
+        op_response = (
+            sr_client
+            .table("horse_op_profile")
+            .select("op_id, users(status)")
+            .execute()
+        )
+
+        if op_response.data:
+            for row in op_response.data:
+                status = row.get("users", {}).get("status", "").lower()
+                if status in counts:
+                    counts[status] += 1
+
+        # -------------------- KUTSERO PROFILES --------------------
+        kutsero_response = (
+            sr_client
+            .table("kutsero_profile")
+            .select("kutsero_id, users(status)")
+            .execute()
+        )
+
+        if kutsero_response.data:
+            for row in kutsero_response.data:
+                status = row.get("users", {}).get("status", "").lower()
+                if status in counts:
+                    counts[status] += 1
 
         return Response(counts, status=200)
 
@@ -574,7 +610,6 @@ def get_status_counts(request):
         print("[ERROR] get_status_counts:", e)
         print(traceback.format_exc())
         return Response({"error": str(e)}, status=500)
-
 # -------------------- GET PROFILES IN SETTINGS --------------------
 @api_view(["GET"])
 @login_required

@@ -1,4 +1,4 @@
-"use client"
+
 
 import Sidebar from "@/components/CtuSidebar"
 import { Bell, CheckCircle, Edit2, Eye, EyeOff, Plus, RefreshCw, Users, XCircle } from "lucide-react"
@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://localhost:8000/api/ctu_vetmed";
+const API_BASE_URL = "https://echo-ebl8.onrender.com"
 
 const CtuSettings = () => {
   const [activeTab, setActiveTab] = useState("profile")
@@ -83,7 +83,7 @@ const CtuSettings = () => {
   // MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
-      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/mark_all_notifications_read/`, {
+      const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -340,7 +340,7 @@ const handleNotificationClick = async (notification) => {
   };
 
   const loadNotifications = useCallback(() => {
-    fetch(`http://localhost:8000/api/ctu_vetmed/get_vetnotifications/`)
+    fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/`)
       .then((res) => res.json())
       .then((data) => {
         const formatted = data.map((notif) => ({
@@ -363,7 +363,7 @@ const handleNotificationClick = async (notification) => {
     setErrors({})
 
     try {
-      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/save_ctu_vet_profile/`, {
+      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/save_ctu_vet_profile/`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -397,7 +397,7 @@ const handleNotificationClick = async (notification) => {
     setErrors({})
 
     try {
-      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/update_ctu_vet_profile/`, {
+      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/update_ctu_vet_profile/`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -440,7 +440,7 @@ const handleNotificationClick = async (notification) => {
     }
 
     try {
-      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/ctu_change_password/`, {
+      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/ctu_change_password/`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -524,7 +524,7 @@ const handleNotificationClick = async (notification) => {
     }
 
     try {
-      const response = await fetch("http://localhost:8000/api/ctu_vetmed/signup/", {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/signup/", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -577,7 +577,7 @@ const handleNotificationClick = async (notification) => {
   // DEACTIVATE USER
   const deactivateUser = async (id) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/users/deactivate/${id}/`, {
+      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/users/deactivate/${id}/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
@@ -594,7 +594,7 @@ const handleNotificationClick = async (notification) => {
   // REACTIVATE USER
   const reactivateUser = async (id) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/users/reactivate/${id}/`, {
+      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/users/reactivate/${id}/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
@@ -632,7 +632,7 @@ const handleNotificationClick = async (notification) => {
   // Fetch CTU Vet profile
   const fetchProfile = async () => {
     try {
-      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/get_ctu_vet_profiles/`, {
+      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/get_ctu_vet_profiles/`, {
         method: "GET",
         credentials: "include",
       });
@@ -676,7 +676,7 @@ const handleNotificationClick = async (notification) => {
   const fetchUsers = async () => {
     try {
       setLoading(true)
-      const res = await fetch("http://localhost:8000/api/ctu_vetmed/users/", {
+      const res = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/users/", {
         method: "GET",
         credentials: "include",
       })
