@@ -662,7 +662,7 @@ const proceedWithApplication = async (owner: HorseOwner) => {
       kutsero_id: userData.profile.kutsero_id
     })
     
-    const url = `${API_BASE_URL}/assign_horse_to_kutsero/`
+    const url = `${API_BASE_URL}/assign_horse/`  // CHANGED HERE
     console.log("DEBUG: Calling URL:", url)
     
     const payload = {
