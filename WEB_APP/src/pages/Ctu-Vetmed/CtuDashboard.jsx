@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE_URL = "https://echo-ebl8.onrender.com"
+const API_BASE = "http://localhost:8000/api/ctu-vetmed"
 
 function CtuDashboard() {
   const navigate = useNavigate()
@@ -159,7 +159,7 @@ function CtuDashboard() {
   const loadStats = useCallback(() => {
     setStatsLoading(true);
 
-    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_status_counts/", {
+    fetch("http://localhost:8000/api/ctu_vetmed/get_status_counts/", {
       method: "GET",
       credentials: "include",
       headers: {
@@ -188,7 +188,7 @@ function CtuDashboard() {
   const loadRecentActivities = useCallback(() => {
     setActivitiesLoading(true);
 
-    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_recent_activity/", {
+    fetch("http://localhost:8000/api/ctu_vetmed/get_recent_activity/", {
       method: "GET",
       credentials: "include",
     })
@@ -222,7 +222,7 @@ function CtuDashboard() {
 
   const loadNotifications = useCallback(async () => {
     try {
-      const response = await fetch(`https://echo-ebl8.onrender.com/get_vetnotifications/`, {
+      const response = await fetch(`http://localhost:8000/api/ctu-vetmed/get_vetnotifications/`, {
         method: "GET",
         credentials: "include",
       })
@@ -250,7 +250,7 @@ function CtuDashboard() {
   const loadSosEmergencies = useCallback(() => {
     setSosLoading(true);
 
-    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_sos_requests/", {
+    fetch("http://localhost:8000/api/ctu_vetmed/get_sos_requests/", {
       method: "GET",
       credentials: "include",
     })

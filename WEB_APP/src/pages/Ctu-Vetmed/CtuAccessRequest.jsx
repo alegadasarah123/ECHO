@@ -1,4 +1,4 @@
-
+"use client"
 import Sidebar from "@/components/CtuSidebar"
 import {
   AlertTriangle,
@@ -25,8 +25,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
-
-const API_BASE_URL = "https://echo-ebl8.onrender.com"
+const API_BASE = "https://echo-ebl8.onrender.com/api/ctu-vetmed"
 
 const SkeletonLoader = ({ activeTab }) => {
   const getGridConfig = () => {
