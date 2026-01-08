@@ -1,97 +1,161 @@
-# urls.py - Kutsero app URLs
 from django.urls import path
 from . import views
 
-urlpatterns = [
-    # Test connection
-    path('test/', views.test_connection, name='test_connection'),
-    
-    # Horse assignment endpoints
-    path('available_horses/', views.available_horses, name='available_horses'),
-    path('assign_horse/', views.assign_horse, name='assign_horse'),
-    path('current_assignment/', views.current_assignment, name='current_assignment'),
-    path('checkout/', views.checkout, name='checkout'),
-    path('unassign_horse/', views.unassign_horse, name='unassign_horse'),  # Backward compatibility
-    path('assignment_history/', views.get_assignment_history, name='get_assignment_history'),
-    
-     # Feeding and Watering Schedule Endpoints
-    path('feed_schedule/', views.get_feed_schedule, name='feed_schedule'),
-    path('water_schedule/', views.get_water_schedule, name='water_schedule'),
-    path('today_schedule/', views.get_today_schedule, name='today_schedule'),
-    path('complete_feed/', views.mark_feed_completed, name='complete_feed'),
-    path('complete_water/', views.mark_water_completed, name='complete_water'),
+urlpatterns = [ 
+    # ============== HORSE OPERATOR PROFILE ==============
+    path('get_horse_operator_profile/', views.get_horse_operator_profile, name='get_horse_operator_profile'),
+    path('update_horse_operator_profile/', views.update_horse_operator_profile, name='update_horse_operator_profile'),
 
-     # Get single kutsero profile by kutsero_id (string identifier) 
 
-    path('profile/<str:kutsero_id>/', views.kutsero_profile, name='kutsero_profile'),
+    # ============== HORSE PROFILE MANAGEMENT ==============
+    path('get_horse_operator_data/', views.get_horse_operator_data, name='get_horse_operator_data'),
+    path('add_horse/', views.add_horse, name='add_horse'),
+    path('get_horses/', views.get_horses, name='get_horses'),
+    path('update_horse/<str:horse_id>/', views.update_horse, name='update_horse'),
+    path('delete_horse_image/<str:horse_id>/', views.delete_horse_image, name='delete_horse_image'),
     
-    # Create new kutsero profile
-    path('profile/create/', views.create_kutsero_profile, name='create_kutsero_profile'),
-    
-    
-    # Get all kutsero profiles
-    path('profiles/', views.get_all_kutsero_profiles, name='get_all_kutsero_profiles'),
-    
-    # Search kutsero profiles
-    path('profiles/search/', views.search_kutsero_profiles, name='search_kutsero_profiles'),
 
-    # Announcements
-    # Announcements
-    path('announcements/', views.get_announcements, name='get_announcements'),
-    path('announcements/<str:announcement_id>/comments/', views.announcement_comments_handler, name='announcement_comments'),
-    path('comments/<str:comment_id>/replies/', views.get_comment_replies, name='get_comment_replies'),
+    # ============== FEEDING SCHEDULE ==============
+    path('get_feeding_schedule/', views.get_feeding_schedule, name='get_feeding_schedule'),
+    path('save_feeding_schedule/', views.save_feeding_schedule, name='save_feeding_schedule'),
+    path('update_feeding_schedule/', views.update_feeding_schedule, name='update_feeding_schedule'),
+    path('mark_meal_fed/', views.mark_meal_fed, name='mark_meal_fed'),
+    path('get_feed_logs/', views.get_feed_logs, name='get_feed_logs'),
+    path('clear_feed_logs/', views.clear_feed_logs, name='clear_feed_logs'),
+    path('reset_daily_feeds/', views.reset_daily_feeds, name='reset_daily_feeds'),
+    path('delete_feed_schedule/', views.delete_feed_schedule, name='delete_feed_schedule'),
+    
 
-    # Calendar endpoints
-    path('get-calendar-events/', views.get_calendar_events, name='get_calendar_events'),
-    path('create-calendar-event/', views.create_calendar_event, name='create_calendar_event'),
-    path('delete-calendar-event/<int:event_id>/', views.delete_calendar_event, name='delete_calendar_event'),
+    # ============== WATERING SCHEDULE ==============
+    path('get_watering_schedule/', views.get_watering_schedule, name='get_watering_schedule'),
+    path('save_watering_schedule/', views.save_watering_schedule, name='save_watering_schedule'),
+    path('mark_water_given/', views.mark_water_given, name='mark_water_given'),
+    path('reset_daily_watering/', views.reset_daily_watering, name='reset_daily_watering'),
+    path('get_water_logs/', views.get_water_logs, name='get_water_logs'),
+    path('clear_water_logs/', views.clear_water_logs, name='clear_water_logs'),
+    path('delete_water_schedule/', views.delete_water_schedule, name='delete_water_schedule'),
+    
 
-    # SOS endpoints
+    # ============== VETERINARIAN ==============
+    path('get_veterinarians/', views.get_veterinarians, name='get_veterinarians'),
+    path('get_vet_profile/', views.get_vet_profile, name='get_vet_profile'),
+    path('get_vet_schedule/', views.get_vet_schedule, name='get_vet_schedule'),
+    path('get_vet_base_schedule/', views.get_vet_base_schedule, name='get_vet_base_schedule'),
+    path('get_vet_appointment_slots/', views.get_vet_appointment_slots, name='get_vet_appointment_slots'),
+    path('check_schedule_availability/', views.check_schedule_availability, name='check_schedule_availability'),
+    path('cleanup_past_schedules/', views.cleanup_past_schedules, name='cleanup_past_schedules'),
+
+
+    # ============== MESSAGING API ==============
+    path('conversations/', views.conversations, name='conversations'),  # ✅ FIXED: matches frontend call
+    path('get_messages/', views.get_messages, name='get_messages'),
+    path('send_message/', views.send_message, name='send_message'),
+    path('available_users/', views.available_users, name='available_users'),
+    path('delete_conversation/', views.delete_conversation, name='delete_conversation'),  # ✅ ADD THIS
+
+    # Debugging / Admin helper
+    path('debug_user_lookup/', views.debug_user_lookup, name='debug_user_lookup'),
+
+
+    # ============== APPOINTMENTS ==============
+    path('book_appointment/', views.book_appointment, name='book_appointment'),
+    path('get_appointments/', views.get_appointments, name='get_appointments'),
+    path('cancel_appointment/<str:app_id>/', views.cancel_appointment, name='cancel_appointment'),
+    path('delete_appointment/<str:app_id>/', views.delete_appointment, name='delete_appointment'),
+    path('delete_appointment_permanently/<str:app_id>/', views.delete_appointment_permanently, name='delete_appointment_permanently'),
+    path('check_reschedule_eligibility/', views.check_reschedule_eligibility, name='check_reschedule_eligibility'),
+    path('reschedule_appointment/', views.reschedule_appointment, name='reschedule_appointment'),
+    path('bulk_release_schedules/', views.bulk_release_schedules, name='bulk_release_schedules'),
+    path('bulk_delete_old_cancelled_appointments/', views.bulk_delete_old_cancelled_appointments, name='bulk_delete_old_cancelled_appointments'),
+    path('update_appointment_status/<str:app_id>/', views.update_appointment_status, name='update_appointment_status'),
+    
+
+    # ============== ANNOUNCEMENTS ==============
+    path('get_announcements/', views.get_announcements, name='get_announcements'),
+
+    # User Posts/Announcements
+    path('get_user_posts/<str:user_id>/', views.get_user_posts, name='get_user_posts'),
+
+    # ============== COMMENTS & REPLIES ==============
+    path('get_announcement_comments/', views.get_announcement_comments, name='get_announcement_comments'),
+    path('add_comment/', views.add_comment, name='add_comment'),
+    path('get_comment_count/', views.get_comment_count, name='get_comment_count'),
+    
+    # ✅ NEW: Reply endpoints
+    path('add_comment_reply/', views.add_comment_reply, name='add_comment_reply'),
+    path('get_comment_replies/', views.get_comment_replies, name='get_comment_replies'),
+
+
+    # ============== HORSE ASSIGNMENTS ==============
+    path('get_horse_assignments/', views.get_horse_assignments, name='get_horse_assignments'),
+
+
+    # ============== MEDICAL RECORDS ==============
+    path('get_horse_medical_records/', views.get_horse_medical_records, name='get_horse_medical_records'),
+    path('get_medical_record_details/', views.get_medical_record_details, name='get_medical_record_details'),
+    path('get_medical_records_summary/', views.get_medical_records_summary, name='get_medical_records_summary'),
+    path('get_medical_record_treatments/', views.get_medical_record_treatments, name='get_medical_record_treatments'),
+
+
+    # ============== SOS EMERGENCY ==============
     path('sos/create/', views.create_sos_request, name='create_sos_request'),
-    path('sos/list/', views.list_sos_requests, name='list_sos_requests'),
-    path('sos/<str:sos_id>/', views.get_sos_request_detail, name='get_sos_request_detail'),
-    
+    path('sos/requests/', views.get_sos_requests, name='get_sos_requests'),
+    path('sos/details/<str:sos_id>/', views.get_sos_details, name='get_sos_details'),
+    path('sos/update-status/<str:sos_id>/', views.update_sos_status, name='update_sos_status'),
+        
 
-    path('debug/urls/', views.debug_urls, name='debug_urls'),
-
+    # ============== AI ASSISTANT ENDPOINTS ==============
     path('ai_assistant/', views.ai_assistant, name='ai_assistant'),
     path('get_chat_history/', views.get_chat_history, name='get_chat_history'),
 
-    # Messaging endpoints
-    path('conversations/', views.conversations, name='conversations'),
-    path('available_users/', views.available_users, name='available_users'),
-    path('get_messages/', views.get_messages, name='get_messages'),
-    path('send_message/', views.send_message, name='send_message'),
-    
-    path('debug_user_lookup/', views.debug_user_lookup, name='debug_user_lookup'),
 
-    # Profile endpoints
-    path('get_user_profile/<str:user_id>/', views.get_user_profile, name='get_user_profile'),
+    # ============== CONTACT API ==============
+    path('get_all_kutseros/', views.get_all_kutseros, name='get_all_kutseros'),
+    path('get_all_operators/', views.get_all_operators, name='get_all_operators'),
+    path('get_all_dvmf/', views.get_all_dvmf, name='get_all_dvmf'),
+    path('get_all_ctu_vet/', views.get_all_ctu_vet, name='get_all_ctu_vet'),
+    path('get_all_kut_pres/', views.get_all_kut_pres, name='get_all_kut_pres'),
 
-    # Search endpoint
-    path('search_all_users/', views.search_all_users, name='search_all_users'),
-    path('get_all_users/', views.get_all_users, name='get_all_users'),
-    path('get_user_announcements/<str:user_id>/', views.get_user_announcements, name='get_user_announcements'),
+
+    # ========== ENHANCED SEARCH ENDPOINTS ==========
+    path('search_users_by_name/', views.search_users_by_name, name='search_users_by_name'),
+    path('get_users_by_role/', views.get_users_by_role, name='get_users_by_role'),
+    path('get_user_profile_by_id/', views.get_user_profile_by_id, name='get_user_profile_by_id'),
+    path('get_vet_schedule_for_profile/', views.get_vet_schedule_for_profile, name='get_vet_schedule_for_profile'),
+    path('get_user_profile/<str:user_id>', views.get_user_profile, name='get_user_profile'),
+    path('get_user_profile/<str:user_id>/', views.get_user_profile, name='get_user_profile_with_slash'),
+
 
     # Forgot Password endpoints
     path('forgot-password/', views.forgot_password, name='forgot_password'),
     path('reset-password/', views.reset_password, name='reset_password'),
+    path('change_password/', views.change_password, name='change_password'),
+
+
+    # VET SERVICES
+    path('get_vet_services/', views.get_vet_services, name='get_vet_services'),
+
 
     #Reminders and Notifications
     path('feed-water-notifications/', views.feed_water_notifications, name='feed_water_notifications'),
     path('check-current-schedules/', views.check_current_schedules, name='check_current_schedules'),
 
-    #Horse Application Endpoints
-    path('horse_owners/', views.get_horse_owners, name='get_horse_owners'),
-    path('apply_to_owner/', views.apply_to_owner, name='apply_to_owner'),
-    path('my_applications/', views.get_my_applications, name='my_applications'),
-    path('get_approved_owners_horses/', views.get_approved_owners_horses, name='get_approved_owners_horses'),
-    path('assign_horse_to_kutsero/', views.assign_horse_to_kutsero, name='assign_horse_to_kutsero'),
-    path('test_horse/', views.test_horse_owners_endpoint, name='test_horse'),
+    # Death Records URLs
+    path('mark_horse_deceased/', views.mark_horse_deceased, name='mark_horse_deceased'),
+    path('get_horse_death_records/', views.get_horse_death_records, name='get_horse_death_records'),
+    path('get_horse_death_record_details/', views.get_horse_death_record_details, name='get_horse_death_record_details'),
+    path('get_horse_death_record/', views.get_horse_death_record, name='get_horse_death_record'),
+
+    # Kutsero Application URLs
+    path('get_kutsero_applications/', views.get_kutsero_applications, name='get_kutsero_applications'),
+    path('get_approved_kutseros/', views.get_approved_kutseros, name='get_approved_kutseros'),
+    path('update_kutsero_application/<int:application_id>/', views.update_kutsero_application, name='update_kutsero_application'),
+    path('remove_kutsero_assignment/', views.remove_kutsero_assignment, name='remove_kutsero_assignment'),
+    path('get_kutsero_application_stats/', views.get_kutsero_application_stats, name='get_kutsero_application_stats'),
+    path('get_kutsero_profile_details/', views.get_kutsero_profile_details, name='get_kutsero_profile_details'),
+    path('get_kutsero_horse_assignments/', views.get_kutsero_horse_assignments, name='get_kutsero_horse_assignments'),
+    path('remove_kutsero_assignment/', views.remove_kutsero_assignment, name='remove_kutsero_assignment'),
+
+
     
-
 ]
-
-
-
-
