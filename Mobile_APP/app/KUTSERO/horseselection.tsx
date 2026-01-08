@@ -71,7 +71,7 @@ interface UserData {
   access_token: string
 }
 
-// Interfaces
+// New interfaces
 interface HorseOwner {
   op_id: string
   name: string
@@ -113,9 +113,28 @@ interface AvailableHorse {
   is_assigned_to_me: boolean
   can_select: boolean
   owner_approved: boolean
+  alive?: boolean
+  assignmentStatus?: string
 }
 
-// Backend API configuration - MAKE SURE THIS IS CORRECT!
+interface HorseFromAvailable {
+  id: string
+  name: string
+  healthStatus: string
+  status: string
+  image: string
+  breed?: string
+  age?: number
+  color?: string
+  operatorName?: string
+  ownerName?: string
+  opName?: string
+  op_id?: string
+  assignmentStatus?: string
+  alive?: boolean
+}
+
+// Backend API configuration
 const API_BASE_URL = "https://echo-ebl8.onrender.com/api/kutsero"
 
 // Helper function to fix image URLs
@@ -158,101 +177,13 @@ export default function HorseSelectionScreen() {
   const [ownerDetailModal, setOwnerDetailModal] = useState(false)
   const [selectedOwnerForDetail, setSelectedOwnerForDetail] = useState<HorseOwner | null>(null)
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null)
-  const [connectionError, setConnectionError] = useState<string | null>(null)
+  const [connectionMode, setConnectionMode] = useState<'new_endpoint' | 'available_horses' | 'no_data'>('no_data')
 
   const safeArea = getSafeAreaPadding()
 
-  // Test API connection
-  const testApiConnection = async () => {
-    try {
-      console.log("Testing API connection to:", API_BASE_URL)
-      
-      // Test health endpoint
-      const healthResponse = await fetch(`${API_BASE_URL}/health/`)
-      console.log("Health check status:", healthResponse.status)
-      
-      if (healthResponse.ok) {
-        const healthData = await healthResponse.json()
-        console.log("Health check data:", healthData)
-      }
-      
-      // Test debug endpoint
-      const debugResponse = await fetch(`${API_BASE_URL}/debug/`)
-      console.log("Debug endpoint status:", debugResponse.status)
-      
-      if (debugResponse.ok) {
-        const debugData = await debugResponse.json()
-        console.log("Debug endpoint data:", debugData)
-      }
-      
-      return true
-    } catch (error) {
-      console.error("API connection test failed:", error)
-      setConnectionError("Cannot connect to server. Please check your internet connection.")
-      return false
-    }
-  }
-
   // Load user data on mount
   useEffect(() => {
-    const initialize = async () => {
-      try {
-        setIsLoading(true)
-        setConnectionError(null)
-        
-        // First test API connection
-        const isConnected = await testApiConnection()
-        if (!isConnected) {
-          setIsLoading(false)
-          return
-        }
-        
-        const storedUserData = await SecureStore.getItemAsync("user_data")
-        const storedAccessToken = await SecureStore.getItemAsync("access_token")
-
-        if (storedUserData && storedAccessToken) {
-          const parsedUserData = JSON.parse(storedUserData)
-          
-          const kutsero_id = parsedUserData.profile?.kutsero_id || parsedUserData.kutsero_id || parsedUserData.id
-          
-          if (!kutsero_id) {
-            Alert.alert("Error", "Could not find your user ID. Please log in again.")
-            router.back()
-            return
-          }
-          
-          const unifiedUserData: UserData = {
-            id: parsedUserData.id,
-            email: parsedUserData.email,
-            profile: {
-              ...parsedUserData.profile,
-              kutsero_id: kutsero_id
-            },
-            access_token: storedAccessToken,
-          }
-          
-          setUserData(unifiedUserData)
-          console.log("User data loaded. kutsero_id:", kutsero_id)
-          
-          // Now load the data with the user data
-          await Promise.all([
-            loadHorseOwners(unifiedUserData),
-            loadMyApplications(unifiedUserData),
-            loadApprovedHorses(unifiedUserData)
-          ])
-        } else {
-          Alert.alert("Error", "User session not found. Please login again.")
-          router.back()
-        }
-      } catch (error) {
-        console.error("Error initializing:", error)
-        Alert.alert("Error", "Failed to load data. Please try again.")
-      } finally {
-        setIsLoading(false)
-      }
-    }
-    
-    initialize()
+    loadUserData()
   }, [])
 
   // Refresh data when screen is focused
@@ -265,98 +196,238 @@ export default function HorseSelectionScreen() {
     }, [userData])
   )
 
-  const loadHorseOwners = async (userDataParam?: UserData) => {
-  try {
-    const dataToUse = userDataParam || userData
-    const kutsero_id = dataToUse?.profile?.kutsero_id
-    
-    if (!kutsero_id) {
-      console.log("ERROR: No kutsero_id available")
-      setHorseOwners([])
-      return
-    }
-
-    console.log("DEBUG: Loading horse owners for kutsero_id:", kutsero_id)
-    
-    // Try with both query parameter formats
-    const url = `${API_BASE_URL}/horse_owners/?kutsero_id=${encodeURIComponent(kutsero_id)}`
-    console.log("DEBUG: Full URL:", url)
-    
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-      }
-    })
-    
-    console.log("DEBUG: Response status:", response.status)
-    console.log("DEBUG: Response headers:", Object.fromEntries(response.headers.entries()))
-    
-    if (response.ok) {
-      const data = await response.json()
-      console.log("DEBUG: Parsed data:", data)
-      
-      if (data.success && data.owners) {
-        console.log("SUCCESS: Found", data.owners.length, "horse owners")
-        setHorseOwners(data.owners || [])
-      } else {
-        console.log("WARNING: API returned success but no owners:", data)
-        setHorseOwners([])
-      }
-    } else {
-      const errorText = await response.text()
-      console.log("ERROR: API returned", response.status, "error:", errorText)
-      setHorseOwners([])
-    }
-    
-  } catch (error: any) {
-    console.error("ERROR in loadHorseOwners:", error.message)
-    console.error("ERROR stack:", error.stack)
-    setHorseOwners([])
-    setConnectionError(`Failed to load horse owners: ${error.message}`)
-  }
-}
-  const loadMyApplications = async (userDataParam?: UserData) => {
+  const loadUserData = async () => {
     try {
-      const dataToUse = userDataParam || userData
-      const kutsero_id = dataToUse?.profile?.kutsero_id
+      setIsLoading(true)
       
-      if (!kutsero_id) {
-        console.log("No kutsero_id available")
-        setMyApplications([])
-        return
-      }
+      const storedUserData = await SecureStore.getItemAsync("user_data")
+      const storedAccessToken = await SecureStore.getItemAsync("access_token")
 
-      console.log("DEBUG: Loading applications with kutsero_id:", kutsero_id)
-      console.log("DEBUG: URL:", `${API_BASE_URL}/my_applications/?kutsero_id=${kutsero_id}`)
-      
-      const response = await fetch(
-        `${API_BASE_URL}/my_applications/?kutsero_id=${kutsero_id}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json"
-          }
-        }
-      )
-      
-      console.log("DEBUG: Applications response status:", response.status)
-      
-      if (response.ok) {
-        const data = await response.json()
-        console.log("DEBUG: Applications response data:", data)
+      if (storedUserData && storedAccessToken) {
+        const parsedUserData = JSON.parse(storedUserData)
         
-        if (data.success) {
-          console.log("DEBUG: Found", data.applications?.length || 0, "applications")
-          setMyApplications(data.applications || [])
+        const kutsero_id = parsedUserData.profile?.kutsero_id || parsedUserData.kutsero_id || parsedUserData.id
+        
+        if (!kutsero_id) {
+          Alert.alert("Error", "Could not find your user ID. Please log in again.")
+          router.back()
           return
         }
+        
+        const unifiedUserData: UserData = {
+          id: parsedUserData.id,
+          email: parsedUserData.email,
+          profile: {
+            ...parsedUserData.profile,
+            kutsero_id: kutsero_id
+          },
+          access_token: storedAccessToken,
+        }
+        
+        setUserData(unifiedUserData)
+        console.log("User data loaded. kutsero_id:", kutsero_id)
+        
+        // Load data
+        await loadHorseOwners()
+        await loadMyApplications()
+        await loadApprovedHorses()
       } else {
-        console.log("DEBUG: Applications API error:", response.status, await response.text())
+        Alert.alert("Error", "User session not found. Please login again.")
+        router.back()
+      }
+    } catch (error) {
+      console.error("Error loading user data:", error)
+      setHorseOwners([])
+      setMyApplications([])
+      setApprovedHorses([])
+      setConnectionMode('no_data')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const loadHorseOwners = async () => {
+    try {
+      const kutsero_id = userData?.profile?.kutsero_id
+      
+      // First try the new horse_owners endpoint
+      if (kutsero_id) {
+        try {
+          const horseOwnersResponse = await fetch(
+            `${API_BASE_URL}/horse_owners/?kutsero_id=${kutsero_id}`,
+            {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json"
+              }
+            }
+          )
+          
+          if (horseOwnersResponse.ok) {
+            const data = await horseOwnersResponse.json()
+            console.log("Using new horse_owners endpoint")
+            console.log("DEBUG: Real owners data from horse_owners endpoint:", {
+              count: data.owners?.length || 0,
+              sample: data.owners?.slice(0, 2)
+            })
+            setHorseOwners(data.owners || [])
+            setConnectionMode(data.owners?.length ? 'new_endpoint' : 'no_data')
+            return
+          } else {
+            console.log("Horse owners endpoint returned status:", horseOwnersResponse.status)
+          }
+        } catch (error) {
+          console.log("Horse owners endpoint error:", error)
+        }
       }
       
-      console.log("No applications found or error in response")
+      // If horse_owners endpoint doesn't exist, get REAL owners from available_horses
+      console.log("Getting REAL horse owners from available_horses endpoint...")
+      
+      const response = await fetch(`${API_BASE_URL}/available_horses/`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json"
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("DEBUG: Raw available horses data:", {
+          total: data.horses?.length || 0,
+          sample: data.horses?.slice(0, 3)
+        })
+        
+        if (data.horses && data.horses.length > 0) {
+          // Get REAL owners from the horse data
+          const realOwners = getRealOwnersFromHorses(data.horses)
+          console.log("DEBUG: Found", realOwners.length, "real owners from horse data")
+          
+          if (realOwners.length > 0) {
+            setHorseOwners(realOwners)
+            setConnectionMode('available_horses')
+          } else {
+            console.log("No real owners could be extracted from horse data")
+            setHorseOwners([])
+            setConnectionMode('no_data')
+          }
+        } else {
+          console.log("No horses found in backend")
+          setHorseOwners([])
+          setConnectionMode('no_data')
+        }
+      } else {
+        console.log("Backend error, no data available")
+        setHorseOwners([])
+        setConnectionMode('no_data')
+      }
+    } catch (error) {
+      console.error("Error loading horse owners:", error)
+      setHorseOwners([])
+      setConnectionMode('no_data')
+    }
+  }
+
+  const getRealOwnersFromHorses = (horses: HorseFromAvailable[]): HorseOwner[] => {
+    const ownersMap = new Map<string, HorseOwner>()
+    
+    console.log("DEBUG: Processing", horses.length, "horses to find real owners")
+    
+    horses.forEach((horse, index) => {
+      console.log(`DEBUG: Horse ${index + 1}:`, {
+        name: horse.name,
+        ownerName: horse.ownerName,
+        opName: horse.opName,
+        operatorName: horse.operatorName,
+        op_id: horse.op_id
+      })
+      
+      // Get owner name from available fields (in order of priority)
+      const ownerName = horse.ownerName || horse.opName || horse.operatorName || 'Unknown Owner'
+      
+      // Skip if no owner information
+      if (!ownerName || ownerName === 'Unknown Owner' || ownerName === '') {
+        console.warn(`DEBUG: Horse ${horse.name} has no owner information`)
+        return
+      }
+      
+      // Create a unique ID from the owner name (lowercase, remove spaces, special chars)
+      const ownerId = ownerName.toLowerCase()
+        .replace(/\s+/g, '_')
+        .replace(/[^a-z0-9_]/g, '')
+      
+      if (!ownersMap.has(ownerId)) {
+        // This is a REAL owner from your database
+        ownersMap.set(ownerId, {
+          op_id: ownerId, // Use generated ID since we don't have real op_id
+          name: ownerName,
+          full_name: ownerName,
+          email: '', // We don't have email from horse data
+          phone: '', // We don't have phone from horse data
+          address: '', // We don't have address from horse data
+          image: '', // We don't have owner image from horse data
+          total_horses: 0,
+          available_horses: [],
+          has_pending_application: false,
+          is_approved: false
+        })
+      }
+      
+      const owner = ownersMap.get(ownerId)!
+      owner.total_horses++
+      
+      // Add this horse to owner's available horses
+      owner.available_horses.push({
+        horse_id: horse.id,
+        horse_name: horse.name,
+        horse_breed: horse.breed || 'Unknown',
+        horse_age: horse.age || 0,
+        horse_image: horse.image,
+        horse_status: horse.status || 'available',
+        horse_color: horse.color || 'Unknown',
+        horse_sex: 'Unknown'
+      })
+    })
+    
+    const owners = Array.from(ownersMap.values())
+    console.log("DEBUG: Created", owners.length, "real owners from database:", 
+      owners.map(o => ({ name: o.full_name, horses: o.total_horses }))
+    )
+    
+    return owners
+  }
+
+  const loadMyApplications = async () => {
+    try {
+      const kutsero_id = userData?.profile?.kutsero_id
+      
+      if (kutsero_id) {
+        try {
+          const response = await fetch(
+            `${API_BASE_URL}/my_applications/?kutsero_id=${kutsero_id}`,
+            {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json"
+              }
+            }
+          )
+          
+          if (response.ok) {
+            const data = await response.json()
+            console.log("DEBUG: Real applications data:", data.applications?.length || 0)
+            setMyApplications(data.applications || [])
+            return
+          } else {
+            console.log("My applications endpoint returned status:", response.status)
+          }
+        } catch (error) {
+          console.log("My applications endpoint error:", error)
+        }
+      }
+      
+      // No real data available
+      console.log("No real applications data available")
       setMyApplications([])
       
     } catch (error) {
@@ -365,98 +436,202 @@ export default function HorseSelectionScreen() {
     }
   }
 
-const loadApprovedHorses = async (userDataParam?: UserData) => {
-  try {
-    const dataToUse = userDataParam || userData
-    const kutsero_id = dataToUse?.profile?.kutsero_id
-    
-    if (!kutsero_id) {
-      console.log("No kutsero_id available")
-      setApprovedHorses([])
-      return
-    }
-
-    console.log("DEBUG: Loading approved horses with kutsero_id:", kutsero_id)
-    
-    // Use the correct endpoint name
-    const url = `${API_BASE_URL}/get_approved_owners_horses/?kutsero_id=${encodeURIComponent(kutsero_id)}`
-    console.log("DEBUG: Trying URL:", url)
-    
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-      },
-    })
-    
-    console.log("DEBUG: Response status:", response.status)
-    
-    if (response.ok) {
-      const data = await response.json()
-      console.log("DEBUG: Full response data:", data)
+  const loadApprovedHorses = async () => {
+    try {
+      const kutsero_id = userData?.profile?.kutsero_id
       
-      if (data.success) {
-        const horses = data.horses || []
-        console.log("SUCCESS: Found", horses.length, "approved horses (before filtering)")
-        
-        // Transform horses to match frontend interface AND FILTER OUT DECEASED HORSES
-        const transformedHorses: AvailableHorse[] = horses
-          .filter((horse: any) => {
-            // Filter out deceased horses
-            const horseStatus = horse.status || horse.horse_status || ''
-            const isDeceased = horseStatus.toLowerCase() === 'deceased'
-            
-            if (isDeceased) {
-              console.log(`Filtering out deceased horse: ${horse.name || horse.horse_name}`)
-              return false
+      if (!kutsero_id) {
+        console.log("No kutsero_id available")
+        setApprovedHorses([])
+        return
+      }
+
+      // First, get my applications to know which owners have approved me
+      try {
+        const applicationsResponse = await fetch(
+          `${API_BASE_URL}/my_applications/?kutsero_id=${kutsero_id}`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json"
             }
-            return true
-          })
-          .map((horse: any) => ({
-            id: horse.id || horse.horse_id || '',
-            name: horse.name || horse.horse_name || '',
-            breed: horse.breed || horse.horse_breed || 'Unknown',
-            age: horse.age || horse.horse_age || 0,
-            sex: horse.sex || horse.horse_sex || 'Unknown',
-            color: horse.color || horse.horse_color || 'Unknown',
-            image: horse.image || horse.horse_image || '',
-            owner_id: horse.owner_id || '',
-            owner_name: horse.owner_name || 'Unknown Owner',
-            status: horse.status || horse.horse_status || 'available',
-            is_assigned: horse.is_assigned || false,
-            is_assigned_to_me: horse.is_assigned_to_me || false,
-            can_select: horse.can_select !== undefined ? horse.can_select : (!horse.is_assigned || horse.is_assigned_to_me),
-            owner_approved: true
-          }))
+          }
+        )
         
-        console.log("AFTER FILTERING: Found", transformedHorses.length, "horses (deceased filtered out)")
-        setApprovedHorses(transformedHorses)
-      } else {
-        console.log("API returned success false:", data.error || "Unknown error")
+        if (applicationsResponse.ok) {
+          const applicationsData = await applicationsResponse.json()
+          const myApplicationsData = applicationsData.applications || []
+          setMyApplications(myApplicationsData)
+          
+          // Get list of owner IDs who have approved me
+          const approvedOwnerIds = myApplicationsData
+            .filter((app: Application) => app.status === 'approved')
+            .map((app: Application) => app.op_id)
+          
+          console.log("DEBUG: Approved owner IDs:", approvedOwnerIds)
+          
+          if (approvedOwnerIds.length === 0) {
+            console.log("No approved owners found")
+            setApprovedHorses([])
+            return
+          }
+          
+          // Now get horses from these approved owners
+          try {
+            const horsesResponse = await fetch(
+              `${API_BASE_URL}/approved_horses/?kutsero_id=${kutsero_id}`,
+              {
+                method: "GET",
+                headers: {
+                  "Content-Type": "application/json"
+                }
+              }
+            )
+            
+            if (horsesResponse.ok) {
+              const horsesData = await horsesResponse.json()
+              
+              // Filter horses to only include those from approved owners
+              const approvedHorsesData = (horsesData.horses || []).filter((horse: any) => 
+                approvedOwnerIds.includes(horse.owner_id || horse.op_id)
+              )
+              
+              console.log("DEBUG: Found", approvedHorsesData.length, "horses from approved owners")
+              
+              // Transform the data
+              const transformedHorses: AvailableHorse[] = approvedHorsesData.map((horse: any) => ({
+                id: horse.id || horse.horse_id || '',
+                name: horse.name || horse.horse_name || '',
+                breed: horse.breed || horse.horse_breed || 'Unknown',
+                age: horse.age || horse.horse_age || 0,
+                sex: horse.sex || horse.horse_sex || 'Unknown',
+                color: horse.color || horse.horse_color || 'Unknown',
+                image: horse.image || horse.horse_image || '',
+                owner_id: horse.owner_id || horse.op_id || '',
+                owner_name: horse.owner_name || horse.op_name || 'Unknown Owner',
+                status: horse.status || horse.horse_status || 'available',
+                is_assigned: horse.is_assigned || false,
+                is_assigned_to_me: horse.is_assigned_to_me || false,
+                can_select: !horse.is_assigned && !horse.is_assigned_to_me,
+                owner_approved: true // These are from approved owners
+              }))
+              
+              setApprovedHorses(transformedHorses)
+              return
+            } else {
+              console.log("Approved horses endpoint failed, trying available_horses")
+            }
+          } catch (horsesError) {
+            console.log("Approved horses endpoint error, trying alternative", horsesError)
+          }
+        } else {
+          console.log("My applications endpoint failed")
+        }
+      } catch (appsError) {
+        console.log("Error loading applications", appsError)
+      }
+      
+      // Fallback: If no dedicated endpoint, get all horses and filter by approved owners
+      console.log("Using fallback method to get horses from approved owners...")
+      
+      // First get all applications to find approved owners
+      const approvedOwnerIds: string[] = []
+      
+      if (myApplications.length > 0) {
+        myApplications
+          .filter(app => app.status === 'approved')
+          .forEach(app => {
+            if (app.op_id && !approvedOwnerIds.includes(app.op_id)) {
+              approvedOwnerIds.push(app.op_id)
+            }
+          })
+      }
+      
+      console.log("DEBUG: Approved owners from my applications:", approvedOwnerIds)
+      
+      if (approvedOwnerIds.length === 0) {
+        console.log("No approved owners - can't show any horses")
+        setApprovedHorses([])
+        return
+      }
+      
+      // Now get all available horses
+      try {
+        const response = await fetch(`${API_BASE_URL}/available_horses/`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json"
+          }
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          
+          if (data.horses && data.horses.length > 0) {
+            // Filter horses to only those from approved owners
+            const approvedHorsesFromData = data.horses.filter((horse: HorseFromAvailable) => {
+              // Get the owner ID from the horse
+              const ownerName = horse.ownerName || horse.opName || horse.operatorName
+              if (!ownerName) return false
+              
+              // Generate owner ID (same logic as in getRealOwnersFromHorses)
+              const ownerId = ownerName.toLowerCase()
+                .replace(/\s+/g, '_')
+                .replace(/[^a-z0-9_]/g, '')
+              
+              // Check if this owner is in our approved list
+              return approvedOwnerIds.includes(ownerId)
+            })
+            
+            console.log("DEBUG: Found", approvedHorsesFromData.length, "horses from approved owners (fallback)")
+            
+            // Transform the filtered horses
+            const transformedHorses: AvailableHorse[] = approvedHorsesFromData.map((horse: HorseFromAvailable) => {
+              const ownerName = horse.ownerName || horse.opName || horse.operatorName || 'Unknown Owner'
+              const ownerId = ownerName.toLowerCase()
+                .replace(/\s+/g, '_')
+                .replace(/[^a-z0-9_]/g, '')
+              
+              return {
+                id: horse.id || '',
+                name: horse.name || '',
+                breed: horse.breed || 'Unknown',
+                age: horse.age || 0,
+                sex: 'Unknown',
+                color: horse.color || 'Unknown',
+                image: horse.image || '',
+                owner_id: ownerId,
+                owner_name: ownerName,
+                status: horse.status || 'available',
+                is_assigned: horse.assignmentStatus === 'assigned',
+                is_assigned_to_me: false,
+                can_select: horse.alive !== false && horse.assignmentStatus !== 'assigned',
+                owner_approved: true
+              }
+            })
+            
+            setApprovedHorses(transformedHorses)
+          } else {
+            console.log("No horses found for approved view")
+            setApprovedHorses([])
+          }
+        } else {
+          console.log("Backend error for horses")
+          setApprovedHorses([])
+        }
+      } catch (error) {
+        console.error("Error in fallback method:", error)
         setApprovedHorses([])
       }
-    } else {
-      console.log("API error status:", response.status)
-      const errorText = await response.text()
-      console.log("API error response:", errorText)
+      
+    } catch (error) {
+      console.error("Error loading approved horses:", error)
       setApprovedHorses([])
     }
-    
-  } catch (error) {
-    console.error("Error loading approved horses:", error)
-    setApprovedHorses([])
   }
-}
 
   const refreshData = async () => {
-    if (!userData) {
-      console.log("No user data available for refresh")
-      return
-    }
-    
     setIsLoading(true)
-    setConnectionError(null)
     try {
       await Promise.all([
         loadHorseOwners(),
@@ -471,7 +646,7 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
   }
 
   const handleApplyToOwner = async (owner: HorseOwner) => {
-    if (!userData || !userData.profile?.kutsero_id) {
+    if (!userData) {
       Alert.alert("Error", "User information not available")
       return
     }
@@ -500,100 +675,60 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
     )
   }
 
-const proceedWithApplication = async (owner: HorseOwner) => {
-  if (!userData?.profile?.kutsero_id) {
-    Alert.alert("Error", "User information not available")
-    return
-  }
-
-  setIsApplying(true)
-
-  try {
-    const payload = {
-      op_id: owner.op_id,
-      kutsero_id: userData.profile.kutsero_id
-    }
-
-    console.log("DEBUG: Sending application", payload)
-
-    const response = await fetch(
-      `${API_BASE_URL}/apply_to_owner/`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload)
-      }
-    )
-
-    let data
+  const proceedWithApplication = async (owner: HorseOwner) => {
+    setIsApplying(true)
     try {
-      data = await response.json()
-    } catch (parseError) {
-      console.log("DEBUG: Failed to parse JSON response")
-      const textResponse = await response.text()
-      console.log("DEBUG: Raw response:", textResponse)
-      throw new Error(`Invalid response from server: ${textResponse}`)
-    }
+      if (userData?.profile?.kutsero_id) {
+        const response = await fetch(`${API_BASE_URL}/apply_to_owner/`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            op_id: owner.op_id,
+            kutsero_id: userData.profile.kutsero_id
+          })
+        })
 
-    console.log("DEBUG: Status:", response.status)
-    console.log("DEBUG: Data:", data)
-
-    if (response.ok && data.success) {
-      Alert.alert(
-        "Application Submitted",
-        `Your application to ${owner.full_name} has been submitted.`,
-        [{
-          text: "OK",
-          onPress: () => {
-            refreshData()
-            setActiveTab("applications")
-          }
-        }]
-      )
-    } else {
-      let errorMessage = data.error || "Failed to submit application"
-
-      // Clean up error message
-      if (typeof errorMessage === 'string') {
-        // Remove Python dictionary formatting if present
-        if (errorMessage.includes("'message':")) {
-          try {
-            const cleaned = errorMessage.replace(/'/g, '"')
-            const parsed = JSON.parse(cleaned)
-            errorMessage = parsed.message || errorMessage
-          } catch (e) {
-            // If parsing fails, extract message manually
-            const match = errorMessage.match(/message': '([^']+)'/)
-            if (match && match[1]) {
-              errorMessage = match[1]
-            }
-          }
+        if (response.ok) {
+          const data = await response.json()
+          
+          Alert.alert(
+            "Application Submitted",
+            `Your application to ${owner.full_name} has been submitted. You will be notified once they review it.`,
+            [
+              {
+                text: "OK",
+                onPress: () => {
+                  loadMyApplications()
+                  loadHorseOwners()
+                  setActiveTab('applications')
+                }
+              }
+            ]
+          )
+          return
+        } else {
+          console.log("Apply to owner endpoint returned status:", response.status)
         }
       }
-
-      Alert.alert("Application Failed", errorMessage)
+      
+      // If backend endpoint doesn't exist or fails
+      Alert.alert(
+        "Feature Not Available",
+        "The application feature requires backend deployment. Please contact support.",
+        [{ text: "OK" }]
+      )
+      
+    } catch (error) {
+      console.error("Error submitting application:", error)
+      Alert.alert("Error", "Failed to submit application. Please try again later.")
+    } finally {
+      setIsApplying(false)
     }
-
-  } catch (error: any) {
-    console.error("Apply error:", error)
-    Alert.alert(
-      "Error",
-      error.message || "Failed to submit application. Please check your connection."
-    )
-  } finally {
-    setIsApplying(false)
   }
-}
-
 
   const handleSelectHorse = (horse: AvailableHorse) => {
-    if (!userData || !userData.profile?.kutsero_id) {
-      Alert.alert("Error", "User information not available")
-      return
-    }
-
     if (!horse.can_select) {
       Alert.alert("Horse Unavailable", "This horse is already assigned to you or another kutsero.")
       return
@@ -618,50 +753,47 @@ const proceedWithApplication = async (owner: HorseOwner) => {
   }
 
   const assignHorseToKutsero = async (horse: AvailableHorse) => {
-    if (!userData || !userData.profile?.kutsero_id) {
-      Alert.alert("Error", "User information not available")
-      return
-    }
-    
     setIsAssigning(true)
     try {
-      const response = await fetch(`${API_BASE_URL}/assign_horse_to_kutsero/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          horse_id: horse.id,
-          op_id: horse.owner_id,
-          kutsero_id: userData.profile.kutsero_id,
-          date_start: new Date().toISOString()
+      if (userData?.profile?.kutsero_id) {
+        const response = await fetch(`${API_BASE_URL}/assign_horse/`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            horse_id: horse.id,
+            op_id: horse.owner_id,
+            kutsero_id: userData.profile.kutsero_id
+          })
         })
-      })
-      
-      const data = await response.json()
-      
-      console.log("DEBUG: Assign horse response:", data)
-      
-      if (response.ok && data.success) {
-        Alert.alert("Success", data.message, [
-          {
-            text: "OK",
-            onPress: () => {
-              // Go back to previous screen
-              router.back()
+        
+        if (response.ok) {
+          const data = await response.json()
+          Alert.alert("Success", data.message, [
+            {
+              text: "OK",
+              onPress: () => {
+                router.back()
+              }
             }
-          }
-        ])
-      } else {
-        Alert.alert(
-          "Assignment Failed",
-          data.error || "Failed to assign horse. Please try again.",
-          [{ text: "OK" }]
-        )
+          ])
+          return
+        } else {
+          console.log("Assign horse endpoint returned status:", response.status)
+        }
       }
+      
+      // If backend endpoint doesn't exist or fails
+      Alert.alert(
+        "Feature Not Available",
+        "The horse assignment feature requires backend deployment. Please contact support.",
+        [{ text: "OK" }]
+      )
+      
     } catch (error) {
       console.error("Error assigning horse:", error)
-      Alert.alert("Error", "Failed to assign horse. Please check your connection and try again.")
+      Alert.alert("Error", "Failed to assign horse. Please try again later.")
     } finally {
       setIsAssigning(false)
     }
@@ -821,103 +953,95 @@ const proceedWithApplication = async (owner: HorseOwner) => {
     </View>
   )
 
-// Render Horse List Item - UPDATED to remove select button for already assigned horses
-const renderHorseItem = ({ item }: { item: AvailableHorse }) => (
-  <TouchableOpacity
-    style={[
-      styles.horseCard,
-      (!item.can_select || !item.owner_approved) && styles.horseCardDisabled
-    ]}
-    onPress={() => item.can_select && item.owner_approved && handleSelectHorse(item)}
-    disabled={!item.can_select || !item.owner_approved}
-    activeOpacity={(item.can_select && item.owner_approved) ? 0.7 : 1}
-  >
-    {!item.owner_approved && (
-      <View style={styles.notApprovedOverlay}>
-        <Text style={styles.notApprovedText}>Owner Not Approved</Text>
-      </View>
-    )}
-    
+  // Render Horse List Item
+  const renderHorseItem = ({ item }: { item: AvailableHorse }) => (
     <TouchableOpacity
-      onPress={() => {
-        if (item.image) {
-          setFullScreenImage(cleanImageUrl(item.image))
-        }
-      }}
-      activeOpacity={0.9}
+      style={[
+        styles.horseCard,
+        (!item.can_select || !item.owner_approved) && styles.horseCardDisabled
+      ]}
+      onPress={() => item.can_select && item.owner_approved && handleSelectHorse(item)}
+      disabled={!item.can_select || !item.owner_approved}
+      activeOpacity={(item.can_select && item.owner_approved) ? 0.7 : 1}
     >
-      <Image 
-        source={{ uri: cleanImageUrl(item.image) }} 
-        style={styles.horseImage}
-        onError={(e) => console.log(`Failed to load horse image:`, e.nativeEvent.error)}
-      />
-    </TouchableOpacity>
-    
-    <View style={styles.horseInfo}>
-      <View style={styles.horseHeader}>
-        <Text style={styles.horseName}>{item.name}</Text>
-        {item.is_assigned && (
-          <View style={styles.assignedBadge}>
-            <Text style={styles.assignedBadgeText}>
-              {item.is_assigned_to_me ? 'Your Horse' : 'Assigned'}
-            </Text>
-          </View>
+      {!item.owner_approved && (
+        <View style={styles.notApprovedOverlay}>
+          <Text style={styles.notApprovedText}>Owner Not Approved</Text>
+        </View>
+      )}
+      
+      <TouchableOpacity
+        onPress={() => {
+          if (item.image) {
+            setFullScreenImage(cleanImageUrl(item.image))
+          }
+        }}
+        activeOpacity={0.9}
+      >
+        <Image 
+          source={{ uri: cleanImageUrl(item.image) }} 
+          style={styles.horseImage}
+          onError={(e) => console.log(`Failed to load horse image:`, e.nativeEvent.error)}
+        />
+      </TouchableOpacity>
+      
+      <View style={styles.horseInfo}>
+        <View style={styles.horseHeader}>
+          <Text style={styles.horseName}>{item.name}</Text>
+          {item.is_assigned && (
+            <View style={styles.assignedBadge}>
+              <Text style={styles.assignedBadgeText}>
+                {item.is_assigned_to_me ? 'Your Horse' : 'Assigned'}
+              </Text>
+            </View>
+          )}
+        </View>
+        
+        <Text style={styles.horseDetails}>
+          {item.breed} • {item.age} years • {item.color}
+        </Text>
+        
+        <Text style={styles.horseOwner}>
+          <FontAwesome name="user" size={12} color="#666" /> {item.owner_name}
+        </Text>
+        
+        {!item.can_select && (
+          <Text style={styles.notAvailableText}>
+            Not available for assignment
+          </Text>
         )}
       </View>
       
-      <Text style={styles.horseDetails}>
-        {item.breed} • {item.age} years • {item.color}
-      </Text>
-      
-      <Text style={styles.horseOwner}>
-        <FontAwesome name="user" size={12} color="#666" /> {item.owner_name}
-      </Text>
-      
-      {!item.can_select && !item.is_assigned_to_me && (
-        <Text style={styles.notAvailableText}>
-          Not available for assignment
-        </Text>
-      )}
-      
-      {/* Show message if horse is already assigned to current user */}
-      {item.is_assigned_to_me && (
-        <Text style={styles.alreadyAssignedText}>
-          ✓ Already assigned to you
-        </Text>
-      )}
-    </View>
-    
-    <View style={styles.horseAction}>
-      {item.can_select && item.owner_approved && !item.is_assigned_to_me ? (
-        <TouchableOpacity
-          style={styles.selectHorseButton}
-          onPress={() => handleSelectHorse(item)}
-          disabled={isAssigning}
-        >
-          <Text style={styles.selectHorseButtonText}>
-            {isAssigning ? '...' : 'Select'}
-          </Text>
-        </TouchableOpacity>
-      ) : !item.owner_approved ? (
-        <MaterialIcons name="lock" size={24} color="#999" />
-      ) : item.is_assigned_to_me ? (
-        // Show checkmark instead of button for already assigned horses
-        <MaterialIcons name="check-circle" size={24} color="#4CAF50" />
-      ) : (
-        <MaterialIcons name="block" size={24} color="#999" />
-      )}
-    </View>
-  </TouchableOpacity>
-)
+      <View style={styles.horseAction}>
+        {item.can_select && item.owner_approved ? (
+          <TouchableOpacity
+            style={styles.selectHorseButton}
+            onPress={() => handleSelectHorse(item)}
+            disabled={isAssigning}
+          >
+            <Text style={styles.selectHorseButtonText}>
+              {isAssigning ? '...' : 'Select'}
+            </Text>
+          </TouchableOpacity>
+        ) : !item.owner_approved ? (
+          <MaterialIcons name="lock" size={24} color="#999" />
+        ) : (
+          <MaterialIcons name="block" size={24} color="#999" />
+        )}
+      </View>
+    </TouchableOpacity>
+  )
 
   const renderEmptyState = (type: 'owners' | 'applications' | 'horses') => {
     const config = {
       owners: {
         icon: 'people',
         title: 'No horse owners found',
-        message: searchText 
-          ? 'Try adjusting your search terms' 
-          : 'No horse owners available'
+        message: connectionMode === 'no_data' 
+          ? 'There are no horse owners in the database' 
+          : searchText 
+            ? 'Try adjusting your search terms' 
+            : 'No horse owners available'
       },
       applications: {
         icon: 'description',
@@ -966,23 +1090,38 @@ const renderHorseItem = ({ item }: { item: AvailableHorse }) => (
     )
   }
 
-  const renderContent = () => {
-    if (connectionError) {
+  const renderStatusBanner = () => {
+    if (connectionMode === 'new_endpoint') {
       return (
-        <View style={styles.errorContainer}>
-          <MaterialIcons name="error-outline" size={60} color="#F44336" />
-          <Text style={styles.errorTitle}>Connection Error</Text>
-          <Text style={styles.errorMessage}>{connectionError}</Text>
-          <TouchableOpacity
-            style={styles.retryButton}
-            onPress={refreshData}
-          >
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
+        <View style={styles.onlineBanner}>
+          <MaterialIcons name="cloud-done" size={16} color="white" />
+          <Text style={styles.onlineText}>Connected to Server</Text>
+        </View>
+      )
+    } else if (connectionMode === 'available_horses' && horseOwners.length > 0) {
+      return (
+        <View style={styles.partialBanner}>
+          <MaterialIcons name="sync" size={16} color="white" />
+          <Text style={styles.partialText}>
+            Showing {horseOwners.length} real horse owners from database
+          </Text>
+        </View>
+      )
+    } else if (horseOwners.length === 0) {
+      return (
+        <View style={styles.noDataBanner}>
+          <MaterialIcons name="error" size={16} color="white" />
+          <Text style={styles.noDataText}>
+            No horse owners found in database
+          </Text>
         </View>
       )
     }
     
+    return null
+  }
+
+  const renderContent = () => {
     switch (activeTab) {
       case 'owners':
         return (
@@ -1025,7 +1164,7 @@ const renderHorseItem = ({ item }: { item: AvailableHorse }) => (
       <View style={[styles.container, styles.loadingContainer]}>
         <StatusBar barStyle="light-content" backgroundColor="#C17A47" />
         <ActivityIndicator size="large" color="white" />
-        <Text style={styles.loadingText}>Loading data...</Text>
+        <Text style={styles.loadingText}>Loading real data...</Text>
       </View>
     )
   }
@@ -1100,6 +1239,9 @@ const renderHorseItem = ({ item }: { item: AvailableHorse }) => (
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Status Banner */}
+      {renderStatusBanner()}
 
       {/* Content */}
       <View style={styles.content}>
@@ -1209,7 +1351,7 @@ const renderHorseItem = ({ item }: { item: AvailableHorse }) => (
                         </View>
                       ))
                     ) : (
-                      <Text style={styles.noHorsesText}></Text>
+                      <Text style={styles.noHorsesText}>No horses available</Text>
                     )}
                   </View>
                   
@@ -1399,36 +1541,49 @@ const styles = StyleSheet.create({
     paddingVertical: dynamicSpacing(16),
     paddingBottom: dynamicSpacing(80),
   },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
+
+  // Status Banners
+  onlineBanner: {
+    backgroundColor: '#4CAF50',
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: scale(32),
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
   },
-  errorTitle: {
-    fontSize: moderateScale(20),
-    fontWeight: '600',
-    color: '#333',
-    marginTop: verticalScale(16),
-  },
-  errorMessage: {
-    fontSize: moderateScale(14),
-    color: '#666',
-    marginTop: verticalScale(8),
-    textAlign: 'center',
-    lineHeight: moderateScale(20),
-  },
-  retryButton: {
-    backgroundColor: '#C17A47',
-    paddingHorizontal: scale(24),
-    paddingVertical: verticalScale(12),
-    borderRadius: scale(25),
-    marginTop: verticalScale(20),
-  },
-  retryButtonText: {
+  onlineText: {
     color: 'white',
-    fontSize: moderateScale(14),
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  partialBanner: {
+    backgroundColor: '#2196F3',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  partialText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  noDataBanner: {
+    backgroundColor: '#F44336',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  noDataText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 8,
   },
 
   // Owner Card Styles
@@ -1726,14 +1881,7 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     fontWeight: '600',
   },
-  // Add this to your styles
-  alreadyAssignedText: {
-    fontSize: moderateScale(11),
-    color: '#4CAF50',
-    marginTop: verticalScale(4),
-    fontStyle: 'italic',
-    fontWeight: '500',
-  },
+
   // Owner Detail Modal Styles
   modalOverlay: {
     flex: 1,

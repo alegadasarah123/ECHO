@@ -1,4 +1,4 @@
-"use client"
+
 
 import { useRouter } from "expo-router"
 import * as SecureStore from "expo-secure-store"
@@ -61,7 +61,7 @@ export default function LoginScreen() {
 
       console.log("Attempting login for:", email.trim().toLowerCase())
 
-      const response = await fetch("http://192.168.101.4:8000/api/login_mobile/", {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/login_mobile/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
