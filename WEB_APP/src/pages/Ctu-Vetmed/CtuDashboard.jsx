@@ -222,7 +222,7 @@ function CtuDashboard() {
 
   const loadNotifications = useCallback(async () => {
     try {
-      const response = await fetch(`http://localhost:8000/api/ctu-vetmed/get_vetnotifications/`, {
+      const response = await  fetch("http://localhost:8000/api/ctu_vetmed/get_vetnotifications/", {
         method: "GET",
         credentials: "include",
       })
