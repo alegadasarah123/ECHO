@@ -662,13 +662,14 @@ const proceedWithApplication = async (owner: HorseOwner) => {
       kutsero_id: userData.profile.kutsero_id
     })
     
-    const url = `${API_BASE_URL}/assign_horse/`  // CHANGED HERE
+    const url = `${API_BASE_URL}/assign_horse/`
     console.log("DEBUG: Calling URL:", url)
     
+    // Ensure all IDs are strings (not numbers)
     const payload = {
-      horse_id: horse.id,
-      op_id: horse.owner_id,
-      kutsero_id: userData.profile.kutsero_id,
+      horse_id: String(horse.id),  // Ensure it's a string
+      op_id: String(horse.owner_id),  // Ensure it's a string
+      kutsero_id: String(userData.profile.kutsero_id),  // Ensure it's a string
       date_start: new Date().toISOString()
     }
     
@@ -682,28 +683,14 @@ const proceedWithApplication = async (owner: HorseOwner) => {
       body: JSON.stringify(payload)
     })
     
-    // First, check what type of response we got
-    const contentType = response.headers.get('content-type')
-    console.log("DEBUG: Response status:", response.status)
-    console.log("DEBUG: Content-Type:", contentType)
-    
-    let responseText = await response.text()
-    console.log("DEBUG: Raw response (first 500 chars):", responseText.substring(0, 500))
+    const responseText = await response.text()
+    console.log("DEBUG: Raw response:", responseText)
     
     let data
     try {
       data = JSON.parse(responseText)
     } catch (parseError) {
       console.log("DEBUG: Failed to parse as JSON")
-      if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
-        console.log("DEBUG: Server returned HTML instead of JSON")
-        // Extract any error message from HTML if possible
-        const errorMatch = responseText.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i) || 
-                           responseText.match(/<body[^>]*>([\s\S]*?)<\/body>/i) ||
-                           responseText.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)
-        
-        throw new Error(`Server error (HTML response). Status: ${response.status}. ${errorMatch ? 'Message: ' + errorMatch[1].substring(0, 100) : ''}`)
-      }
       throw new Error(`Invalid response from server: ${responseText.substring(0, 100)}`)
     }
     
@@ -714,7 +701,6 @@ const proceedWithApplication = async (owner: HorseOwner) => {
         {
           text: "OK",
           onPress: () => {
-            // Go back to previous screen
             router.back()
           }
         }

@@ -5366,6 +5366,9 @@ def assign_horse_to_kutsero(request):
         kutsero_id = data.get('kutsero_id')
         horse_id = data.get('horse_id')
         op_id = data.get('op_id')
+        date_start = data.get('date_start')
+        
+        print(f"DEBUG [assign_horse_to_kutsero]: Received data: {data}")
         
         if not all([kutsero_id, horse_id, op_id]):
             return Response({
@@ -5399,10 +5402,10 @@ def assign_horse_to_kutsero(request):
         if horse.get('horse_status') not in ['available', 'idle']:
             return Response({
                 'success': False,
-                'error': 'Horse is not available for assignment'
+                'error': f'Horse is not available for assignment. Current status: {horse.get("horse_status")}'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Check if horse is already assigned to someone else - Check for active assignments (date_end is null)
+        # Check if horse is already assigned (date_end is null)
         assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse_id).is_("date_end", "null").execute()
         
         if assignment_response.data:
@@ -5418,19 +5421,44 @@ def assign_horse_to_kutsero(request):
                     'error': 'This horse is already assigned to you'
                 }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Create assignment record - Match your schema
+        # Create assignment record
         assign_id = str(uuid.uuid4())
         assignment_data = {
             'assign_id': assign_id,
-            'horse_id': horse_id,
-            'kutsero_id': kutsero_id,
-            'date_start': datetime.now().isoformat(),
-            'date_end': None,  # Active assignment, no end date
+            'horse_id': horse_id,  # This should be UUID
+            'kutsero_id': kutsero_id,  # This should also be UUID
+            'date_start': date_start if date_start else datetime.now().isoformat(),
+            'date_end': None,
             'created_at': datetime.now().isoformat(),
             'updated_at': datetime.now().isoformat()
         }
         
-        assignment_result = service_client.table("horse_assignment").insert(assignment_data).execute()
+        print(f"DEBUG: Creating assignment with data: {assignment_data}")
+        
+        # Try to insert the assignment
+        try:
+            assignment_result = service_client.table("horse_assignment").insert(assignment_data).execute()
+        except Exception as insert_error:
+            print(f"DEBUG: Insert error details: {insert_error}")
+            # The error might be related to UUID format
+            # Ensure horse_id and kutsero_id are valid UUIDs
+            import re
+            uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+            
+            if not uuid_pattern.match(horse_id):
+                return Response({
+                    'success': False,
+                    'error': f'Invalid horse_id format: {horse_id}. Must be a valid UUID.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if not uuid_pattern.match(kutsero_id):
+                return Response({
+                    'success': False,
+                    'error': f'Invalid kutsero_id format: {kutsero_id}. Must be a valid UUID.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # If we get here, re-raise the original error
+            raise insert_error
         
         if not assignment_result.data:
             return Response({
@@ -5438,11 +5466,13 @@ def assign_horse_to_kutsero(request):
                 'error': 'Failed to create assignment record'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
-        # Update horse status
+        # Update horse status to 'assigned'
         update_response = service_client.table("horse_profile").update({
             'horse_status': 'assigned',
             'updated_at': datetime.now().isoformat()
         }).eq("horse_id", horse_id).execute()
+        
+        print(f"DEBUG: Assignment successful for horse {horse['horse_name']}")
         
         return Response({
             'success': True,
@@ -5460,9 +5490,18 @@ def assign_horse_to_kutsero(request):
     except Exception as e:
         print(f"ERROR in assign_horse_to_kutsero: {str(e)}")
         traceback.print_exc()
+        
+        # Check for specific database errors
+        error_msg = str(e)
+        if "invalid input syntax for type integer" in error_msg:
+            return Response({
+                'success': False,
+                'error': 'Database type mismatch. horse_id should be UUID but database expects integer. Please check your database schema.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
         return Response({
             'success': False,
-            'error': str(e)
+            'error': f'Assignment failed: {error_msg}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
