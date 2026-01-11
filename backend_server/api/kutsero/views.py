@@ -5841,3 +5841,4 @@ def test_horse_owners_endpoint(request):
             ]
         }
     }, status=status.HTTP_200_OK)
+

@@ -88,8 +88,7 @@ urlpatterns = [
     path('approved_horses/', views.get_approved_owners_horses, name='get_approved_owners_horses'),
     path('assign_horse/', views.assign_horse_to_kutsero, name='assign_horse_to_kutsero'),
     path('test/', views.test_horse_owners_endpoint, name='test_endpoint'),
-    path('end_current_assignment/', views.end_current_assignment, name='end_current_assignment'),
-    
+
 
 ]
 
