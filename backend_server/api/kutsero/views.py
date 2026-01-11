@@ -4980,10 +4980,9 @@ def operator_notifications(request):
 @api_view(['GET'])
 def get_horse_owners(request):
     """
-    Get all horse owners with their available horses
+    Get all horse owners with their AVAILABLE horses (excluding deceased/sick)
     """
     try:
-        # Get the kutsero_id from query params
         kutsero_id = request.GET.get("kutsero_id")
         if not kutsero_id:
             return Response({
@@ -4991,12 +4990,10 @@ def get_horse_owners(request):
                 "error": "kutsero_id is required"
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Use your existing supabase client
-        from supabase import create_client
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         owners = []
 
-        # Get all horse owners from horse_op_profile table
+        # Get all horse owners
         owners_response = service_client.table("horse_op_profile").select("*").execute()
         
         print(f"DEBUG: Found {len(owners_response.data or [])} horse owners")
@@ -5008,27 +5005,32 @@ def get_horse_owners(request):
         for app in applications_response.data or []:
             existing_applications[app['op_id']] = app['status']
         
-        print(f"DEBUG: Found {len(existing_applications)} existing applications for kutsero {kutsero_id}")
+        print(f"DEBUG: Found {len(existing_applications)} existing applications")
 
-        # Process each owner
         for owner in owners_response.data or []:
             op_id = owner['op_id']
             
-            # Get available horses for this owner (not deceased)
+            # Get ONLY healthy/available horses for this owner
             horses_response = service_client.table("horse_profile").select("*").eq("op_id", op_id).execute()
             
             available_horses = []
-            total_horses = 0
+            total_healthy_horses = 0
+            total_all_horses = len(horses_response.data or [])
             
             for horse in horses_response.data or []:
-                # Skip deceased horses
-                if horse.get('horse_status') == 'deceased':
-                    continue
+                # FILTER OUT deceased and sick horses
+                horse_status = horse.get('horse_status', '').lower()
                 
-                total_horses += 1
+                # Exclude these statuses
+                exclude_statuses = ['deceased', 'sick', 'ill', 'injured', 'dead']
                 
-                # Only include available or idle horses
-                if horse.get('horse_status') in ['available', 'idle']:
+                if any(exclude_status in horse_status for exclude_status in exclude_statuses):
+                    continue  # Skip this horse
+                
+                total_healthy_horses += 1
+                
+                # Only include available or idle horses in available_horses list
+                if horse_status in ['available', 'idle', 'healthy', 'good']:
                     available_horses.append({
                         'horse_id': horse['horse_id'],
                         'horse_name': horse['horse_name'],
@@ -5040,12 +5042,19 @@ def get_horse_owners(request):
                         'horse_sex': horse.get('horse_sex')
                     })
             
+            # Skip owners with no healthy horses
+            if total_healthy_horses == 0:
+                continue
+            
             # Check if kutsero has existing application with this owner
             has_pending_application = existing_applications.get(op_id) == 'pending'
             is_approved = existing_applications.get(op_id) == 'approved'
             
             # Get owner's full name
-            full_name = f"{owner.get('op_fname', '')} {owner.get('op_mname', '')} {owner.get('op_lname', '')}".strip()
+            full_name = f"{owner.get('op_fname', '')} {owner.get('op_lname', '')}".strip()
+            if owner.get('op_mname'):
+                full_name = f"{owner.get('op_fname', '')} {owner.get('op_mname', '')} {owner.get('op_lname', '')}".strip()
+            
             if not full_name:
                 full_name = "Unknown Owner"
             
@@ -5075,11 +5084,14 @@ def get_horse_owners(request):
                 'phone': owner.get('op_phone_num'),
                 'address': address,
                 'image': owner.get('op_image'),
-                'total_horses': total_horses,
-                'available_horses': available_horses,
+                'total_horses': total_healthy_horses,  # Only count healthy horses
+                'available_horses': available_horses,  # Only available/idle horses
                 'has_pending_application': has_pending_application,
-                'is_approved': is_approved
+                'is_approved': is_approved,
+                'notes': f"{total_healthy_horses} healthy horses ({len(available_horses)} available)"
             })
+        
+        print(f"DEBUG: Returning {len(owners)} owners with healthy horses")
         
         return Response({
             'success': True,
@@ -5246,11 +5258,12 @@ def get_my_applications(request):
 @api_view(['GET'])
 def get_approved_owners_horses(request):
     """
-    Get horses from owners who have approved the kutsero
+    Get ONLY HEALTHY horses from owners who have approved the kutsero
+    Filters out deceased and sick horses
     """
     try:
         kutsero_id = request.GET.get("kutsero_id")
-        print(f"DEBUG [get_approved_owners_horses]: Received request with kutsero_id: {kutsero_id}")
+        print(f"DEBUG [get_approved_owners_horses]: Loading healthy horses for kutsero_id: {kutsero_id}")
         
         if not kutsero_id:
             print("DEBUG: No kutsero_id provided")
@@ -5262,32 +5275,36 @@ def get_approved_owners_horses(request):
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
         # Get approved applications
-        print(f"DEBUG: Checking approved applications for kutsero_id: {kutsero_id}")
+        print(f"DEBUG: Checking approved applications...")
         approved_apps_response = service_client.table("op_kutsero_application").select("op_id").eq("kutsero_id", kutsero_id).eq("status", "approved").execute()
         
-        print(f"DEBUG: Approved apps query result: {approved_apps_response}")
-        print(f"DEBUG: Number of approved owners: {len(approved_apps_response.data or [])}")
-        
-        approved_op_ids = [app['op_id'] for app in approved_apps_response.data or []]
-        print(f"DEBUG: Approved op_ids: {approved_op_ids}")
-        
-        if not approved_op_ids:
+        if not approved_apps_response.data:
             print("DEBUG: No approved owners found")
             return Response({
                 'success': True,
                 'horses': [],
                 'total': 0,
-                'message': 'No approved owners found'
+                'message': 'No approved owners found. Apply to owners first!'
             }, status=status.HTTP_200_OK)
         
-        # Get horses from approved owners
+        approved_op_ids = [app['op_id'] for app in approved_apps_response.data]
+        print(f"DEBUG: Found {len(approved_op_ids)} approved owners: {approved_op_ids}")
+        
+        # Get all horses from approved owners
         all_horses = []
         
         for op_id in approved_op_ids:
-            print(f"DEBUG: Getting horses for owner: {op_id}")
+            print(f"DEBUG: Getting horses for approved owner: {op_id}")
+            
+            # Get ONLY healthy/available horses for this owner
+            # Filter out deceased and sick horses
             horses_response = service_client.table("horse_profile").select("*").eq("op_id", op_id).execute()
             
-            print(f"DEBUG: Found {len(horses_response.data or [])} horses for owner {op_id}")
+            if not horses_response.data:
+                print(f"DEBUG: No horses found for owner {op_id}")
+                continue
+                
+            print(f"DEBUG: Found {len(horses_response.data)} total horses for owner {op_id}")
             
             # Get owner details
             owner_response = service_client.table("horse_op_profile").select("*").eq("op_id", op_id).execute()
@@ -5296,55 +5313,75 @@ def get_approved_owners_horses(request):
                 owner = owner_response.data[0]
                 owner_name = f"{owner.get('op_fname', '')} {owner.get('op_lname', '')}".strip()
             
-            for horse in horses_response.data or []:
-                # Skip deceased horses
-                if horse.get('horse_status') == 'deceased':
-                    print(f"DEBUG: Skipping deceased horse: {horse.get('horse_name')}")
+            healthy_horses_count = 0
+            for horse in horses_response.data:
+                # Check horse status - FILTER OUT deceased and sick horses
+                horse_status = horse.get('horse_status', '').lower()
+                
+                # List of statuses to EXCLUDE
+                exclude_statuses = ['deceased', 'sick', 'ill', 'injured', 'dead']
+                
+                if any(exclude_status in horse_status for exclude_status in exclude_statuses):
+                    print(f"DEBUG: Skipping {horse_status} horse: {horse.get('horse_name')}")
                     continue
                 
-                # Check if horse is already assigned (using horse_assignment table) - Check for active assignments (date_end is null)
-                assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse['horse_id']).is_("date_end", "null").execute()
-                is_assigned = bool(assignment_response.data)
+                # Also check if horse is marked as "available", "idle", or "healthy"
+                # Only include horses that are actually available for work
+                valid_statuses = ['available', 'idle', 'healthy', 'good', 'ready', 'active']
+                if horse_status not in valid_statuses:
+                    print(f"DEBUG: Horse {horse.get('horse_name')} has non-available status: {horse_status}")
+                    # Skip but don't count as error
                 
-                # Check if assigned to this specific kutsero
+                healthy_horses_count += 1
+                
+                # Check if horse is already assigned
+                is_assigned = False
                 is_assigned_to_me = False
-                if assignment_response.data:
-                    assignment = assignment_response.data[0]
-                    is_assigned_to_me = assignment.get('kutsero_id') == kutsero_id
+                
+                try:
+                    # Check for active assignment
+                    assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse['horse_id']).is_("date_end", "null").execute()
+                    
+                    if assignment_response.data:
+                        is_assigned = True
+                        assignment = assignment_response.data[0]
+                        is_assigned_to_me = str(assignment.get('kutsero_id')) == str(kutsero_id)
+                except Exception as assignment_error:
+                    print(f"DEBUG: Error checking assignment: {assignment_error}")
+                    # Assume not assigned if we can't check
+                    pass
                 
                 horse_data = {
                     'id': horse['horse_id'],
-                    'horse_id': horse['horse_id'],  # Add both formats for compatibility
-                    'name': horse['horse_name'],
-                    'horse_name': horse['horse_name'],
-                    'breed': horse['horse_breed'],
-                    'horse_breed': horse['horse_breed'],
-                    'age': horse['horse_age'],
-                    'horse_age': horse['horse_age'],
-                    'sex': horse['horse_sex'],
-                    'horse_sex': horse['horse_sex'],
-                    'color': horse['horse_color'],
-                    'horse_color': horse['horse_color'],
-                    'image': horse.get('horse_image'),
-                    'horse_image': horse.get('horse_image'),
+                    'name': horse.get('horse_name', 'Unknown Horse'),
+                    'breed': horse.get('horse_breed', 'Unknown'),
+                    'age': horse.get('horse_age', 0),
+                    'sex': horse.get('horse_sex', 'Unknown'),
+                    'color': horse.get('horse_color', 'Unknown'),
+                    'image': horse.get('horse_image', ''),
                     'owner_id': op_id,
                     'owner_name': owner_name,
-                    'status': horse.get('horse_status', 'unknown'),
-                    'horse_status': horse.get('horse_status', 'unknown'),
+                    'status': horse.get('horse_status', 'available').capitalize(),
                     'is_assigned': is_assigned,
                     'is_assigned_to_me': is_assigned_to_me,
                     'can_select': not is_assigned or is_assigned_to_me,
                     'owner_approved': True
                 }
                 all_horses.append(horse_data)
-                
-                print(f"DEBUG: Added horse: {horse['horse_name']}, status: {horse.get('horse_status')}, assigned: {is_assigned}, assigned_to_me: {is_assigned_to_me}")
+                print(f"DEBUG: Added healthy horse: {horse_data['name']} (Status: {horse_data['status']})")
+            
+            print(f"DEBUG: Owner {owner_name} has {healthy_horses_count} healthy horses")
         
-        print(f"DEBUG: Total horses returned: {len(all_horses)}")
+        print(f"DEBUG: Total healthy horses returned: {len(all_horses)}")
+        
+        if all_horses:
+            print(f"DEBUG: Sample healthy horse: {all_horses[0]}")
+        
         return Response({
             'success': True,
             'horses': all_horses,
             'total': len(all_horses),
+            'message': f'Found {len(all_horses)} healthy horses from {len(approved_op_ids)} approved owners',
             'approved_owners': approved_op_ids
         }, status=status.HTTP_200_OK)
         
