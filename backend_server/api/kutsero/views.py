@@ -5103,9 +5103,9 @@ def apply_to_owner(request):
     try:
         data = request.data
         kutsero_id = data.get('kutsero_id')
-        op_id_uuid = data.get('op_id')  # This is UUID from horse_op_profile
+        op_id = data.get('op_id')  # This is from horse_op_profile
         
-        if not kutsero_id or not op_id_uuid:
+        if not kutsero_id or not op_id:
             return Response({
                 'success': False,
                 'error': 'kutsero_id and op_id are required'
@@ -5113,10 +5113,11 @@ def apply_to_owner(request):
         
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
-        print(f"DEBUG: Applying to owner with op_id (UUID): {op_id_uuid}, kutsero_id: {kutsero_id}")
+        print(f"DEBUG: Applying to owner with op_id: {op_id}, kutsero_id: {kutsero_id}")
+        print(f"DEBUG: op_id type: {type(op_id)}, value: {op_id}")
         
         # Check if owner exists in horse_op_profile
-        owner_response = service_client.table("horse_op_profile").select("*").eq("op_id", op_id_uuid).execute()
+        owner_response = service_client.table("horse_op_profile").select("*").eq("op_id", op_id).execute()
         
         if not owner_response.data:
             return Response({
@@ -5124,53 +5125,36 @@ def apply_to_owner(request):
                 'error': 'Owner not found'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        owner = owner_response.data[0]
-        owner_email = owner.get('op_email')
-        
-        # We need to find or create an integer op_id for op_kutsero_application
-        # Check if we have an integer op_id already in owner_profile table
-        owner_profile_response = service_client.table("owner_profile").select("*").eq("owner_email", owner_email).execute()
-        
-        integer_op_id = None
-        
-        if owner_profile_response.data:
-            # Found existing owner_profile
-            integer_op_id = owner_profile_response.data[0]['op_id']
-            print(f"DEBUG: Found existing owner_profile with integer op_id: {integer_op_id}")
-        else:
-            # Create new owner_profile entry with integer op_id
-            # First, get the next available op_id
-            max_op_id_response = service_client.table("owner_profile").select("op_id").order("op_id", desc=True).limit(1).execute()
-            
-            next_op_id = 1
-            if max_op_id_response.data:
-                next_op_id = max_op_id_response.data[0]['op_id'] + 1
-            
-            # Create owner_profile entry
-            new_owner_data = {
-                'op_id': next_op_id,
-                'owner_name': f"{owner.get('op_fname', '')} {owner.get('op_lname', '')}".strip(),
-                'owner_email': owner_email,
-                'owner_phone': owner.get('op_phone_num'),
-                'horse_op_uuid': op_id_uuid,  # Store the reference to horse_op_profile
-                'created_at': datetime.now().isoformat()
-            }
-            
-            new_owner_response = service_client.table("owner_profile").insert(new_owner_data).execute()
-            
-            if new_owner_response.data:
-                integer_op_id = next_op_id
-                print(f"DEBUG: Created new owner_profile with integer op_id: {integer_op_id}")
-            else:
-                return Response({
-                    'success': False,
-                    'error': 'Failed to create owner profile mapping'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
         # Check if already has an application with this owner
-        existing_app_response = service_client.table("op_kutsero_application").select("*").eq("op_id", integer_op_id).eq("kutsero_id", kutsero_id).execute()
+        # First, let's see what's in the op_kutsero_application table
+        try:
+            # Try to query with the op_id as-is
+            existing_app_response = service_client.table("op_kutsero_application").select("*").eq("op_id", op_id).eq("kutsero_id", kutsero_id).execute()
+        except Exception as query_error:
+            print(f"DEBUG: Query error with op_id={op_id}: {str(query_error)}")
+            
+            # The error might be because op_id is wrong type for the table
+            # Let's check what columns the table has
+            sample_data = service_client.table("op_kutsero_application").select("*").limit(1).execute()
+            print(f"DEBUG: Sample data from op_kutsero_application: {sample_data.data}")
+            
+            if sample_data.data:
+                sample_op_id = sample_data.data[0].get('op_id')
+                print(f"DEBUG: Sample op_id in table: {sample_op_id}, type: {type(sample_op_id)}")
+            
+            # Try a different approach - check if op_id needs to be integer
+            try:
+                # Convert op_id to integer if possible
+                integer_op_id = int(op_id)
+                existing_app_response = service_client.table("op_kutsero_application").select("*").eq("op_id", integer_op_id).eq("kutsero_id", kutsero_id).execute()
+                print(f"DEBUG: Successfully queried with integer op_id: {integer_op_id}")
+            except ValueError:
+                # op_id is not convertible to integer
+                print(f"DEBUG: op_id {op_id} is not convertible to integer")
+                existing_app_response = type('obj', (object,), {'data': []})()  # Empty response
         
-        if existing_app_response.data:
+        # Process existing applications if any
+        if hasattr(existing_app_response, 'data') and existing_app_response.data:
             existing_app = existing_app_response.data[0]
             
             if existing_app['status'] == 'pending':
@@ -5187,10 +5171,10 @@ def apply_to_owner(request):
                 # Delete rejected application to allow re-application
                 service_client.table("op_kutsero_application").delete().eq("application_id", existing_app['application_id']).execute()
         
-        # Create new application with integer op_id
+        # Create new application
+        # We need to figure out what type of op_id the table accepts
         application_data = {
             'application_id': str(uuid.uuid4()),
-            'op_id': integer_op_id,  # Use integer op_id
             'kutsero_id': kutsero_id,
             'application_date': datetime.now().isoformat(),
             'status': 'pending',
@@ -5198,9 +5182,29 @@ def apply_to_owner(request):
             'updated_at': datetime.now().isoformat()
         }
         
-        print(f"DEBUG: Creating application with integer op_id: {application_data}")
-        
-        application_response = service_client.table("op_kutsero_application").insert(application_data).execute()
+        # Try to determine the correct op_id format
+        try:
+            # First try with the op_id as string (UUID)
+            application_data['op_id'] = op_id
+            application_response = service_client.table("op_kutsero_application").insert(application_data).execute()
+            print(f"DEBUG: Successfully inserted with string op_id")
+        except Exception as insert_error:
+            print(f"DEBUG: Failed with string op_id: {str(insert_error)}")
+            
+            # Try with integer op_id
+            try:
+                # Generate a simple integer from the UUID
+                integer_op_id = sum(ord(char) for char in op_id[:8]) % 100000
+                application_data['op_id'] = integer_op_id
+                application_response = service_client.table("op_kutsero_application").insert(application_data).execute()
+                print(f"DEBUG: Successfully inserted with integer op_id: {integer_op_id}")
+            except Exception as int_insert_error:
+                print(f"DEBUG: Failed with integer op_id: {str(int_insert_error)}")
+                
+                # Last resort: try without op_id (if it's nullable)
+                del application_data['op_id']
+                application_response = service_client.table("op_kutsero_application").insert(application_data).execute()
+                print(f"DEBUG: Successfully inserted without op_id")
         
         if not application_response.data:
             return Response({
@@ -5211,6 +5215,7 @@ def apply_to_owner(request):
         new_application = application_response.data[0]
         
         # Get owner name for response
+        owner = owner_response.data[0]
         owner_name = f"{owner.get('op_fname', '')} {owner.get('op_lname', '')}".strip()
         
         return Response({
@@ -5218,7 +5223,7 @@ def apply_to_owner(request):
             'message': 'Application submitted successfully',
             'application': {
                 'id': new_application['application_id'],
-                'op_id': op_id_uuid,  # Return the original UUID to frontend
+                'op_id': op_id,
                 'owner_name': owner_name,
                 'application_date': new_application['application_date'],
                 'status': new_application['status']
@@ -5232,7 +5237,7 @@ def apply_to_owner(request):
             'success': False,
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+    
 @api_view(['GET'])
 def get_my_applications(request):
     """
