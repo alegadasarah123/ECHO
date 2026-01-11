@@ -656,23 +656,20 @@ const proceedWithApplication = async (owner: HorseOwner) => {
   
   setIsAssigning(true)
   try {
-    console.log("DEBUG: Assigning horse", {
-      horse_id: horse.id,
-      op_id: horse.owner_id,
-      kutsero_id: userData.profile.kutsero_id
-    })
+    console.log("🚀 DEBUG: Starting horse assignment process")
     
-    const url = `${API_BASE_URL}/assign_horse/`  // CHANGED HERE
+    const url = `${API_BASE_URL}/assign_horse/`
     console.log("DEBUG: Calling URL:", url)
     
+    // Payload that matches what backend expects
     const payload = {
+      kutsero_id: userData.profile.kutsero_id,
       horse_id: horse.id,
       op_id: horse.owner_id,
-      kutsero_id: userData.profile.kutsero_id,
       date_start: new Date().toISOString()
     }
     
-    console.log("DEBUG: Payload:", payload)
+    console.log("DEBUG: Sending payload:", payload)
     
     const response = await fetch(url, {
       method: "POST",
@@ -682,56 +679,78 @@ const proceedWithApplication = async (owner: HorseOwner) => {
       body: JSON.stringify(payload)
     })
     
-    // First, check what type of response we got
-    const contentType = response.headers.get('content-type')
     console.log("DEBUG: Response status:", response.status)
-    console.log("DEBUG: Content-Type:", contentType)
     
-    let responseText = await response.text()
-    console.log("DEBUG: Raw response (first 500 chars):", responseText.substring(0, 500))
+    const responseText = await response.text()
+    console.log("DEBUG: Raw response:", responseText)
     
     let data
     try {
       data = JSON.parse(responseText)
+      console.log("DEBUG: Parsed response data:", data)
     } catch (parseError) {
-      console.log("DEBUG: Failed to parse as JSON")
-      if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
-        console.log("DEBUG: Server returned HTML instead of JSON")
-        // Extract any error message from HTML if possible
-        const errorMatch = responseText.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i) || 
-                           responseText.match(/<body[^>]*>([\s\S]*?)<\/body>/i) ||
-                           responseText.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)
+      console.error("DEBUG: Failed to parse JSON:", parseError)
+      throw new Error(`Server returned invalid JSON. Status: ${response.status}`)
+    }
+    
+    // Check for success based on the actual response structure
+    if (response.ok) {
+      // Check different possible success indicators
+      const isSuccess = data.success === true || 
+                       data.message?.toLowerCase().includes('assigned successfully') ||
+                       data.assignment?.assign_id !== undefined
+      
+      if (isSuccess) {
+        console.log("✅ DEBUG: Horse assignment successful!")
         
-        throw new Error(`Server error (HTML response). Status: ${response.status}. ${errorMatch ? 'Message: ' + errorMatch[1].substring(0, 100) : ''}`)
+        // Show success message
+        Alert.alert(
+          "Success", 
+          data.message || "Horse assigned successfully!",
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                // Navigate back
+                router.back()
+              }
+            }
+          ]
+        )
+        
+        // Refresh data to update UI
+        refreshData()
+        return
       }
-      throw new Error(`Invalid response from server: ${responseText.substring(0, 100)}`)
     }
     
-    console.log("DEBUG: Parsed response data:", data)
+    // If we get here, it's an error
+    let errorMessage = "Failed to assign horse"
     
-    if (response.ok && data.success) {
-      Alert.alert("Success", data.message, [
-        {
-          text: "OK",
-          onPress: () => {
-            // Go back to previous screen
-            router.back()
-          }
-        }
-      ])
-    } else {
-      Alert.alert(
-        "Assignment Failed",
-        data.error || "Failed to assign horse. Please try again.",
-        [{ text: "OK" }]
-      )
+    if (data.error) {
+      errorMessage = data.error
+    } else if (data.detail) {
+      errorMessage = data.detail
+    } else if (data.message && !data.message.toLowerCase().includes('success')) {
+      errorMessage = data.message
     }
+    
+    console.error("DEBUG: Error response:", data)
+    Alert.alert("Assignment Failed", errorMessage, [{ text: "OK" }])
+    
   } catch (error: any) {
-    console.error("Error assigning horse:", error)
-    Alert.alert(
-      "Error", 
-      error.message || "Failed to assign horse. Please check your connection and try again."
-    )
+    console.error("🚨 Error assigning horse:", error)
+    
+    let errorMessage = error.message || "Failed to assign horse"
+    
+    // Check for network errors
+    if (errorMessage.includes('Network request failed')) {
+      errorMessage = "Network error. Please check your internet connection."
+    } else if (errorMessage.includes('fetch')) {
+      errorMessage = "Cannot connect to server. Please try again later."
+    }
+    
+    Alert.alert("Error", errorMessage, [{ text: "OK" }])
   } finally {
     setIsAssigning(false)
   }
