@@ -665,6 +665,7 @@ const proceedWithApplication = async (owner: HorseOwner) => {
   }
 }
 
+// In the assignHorseToKutsero function, make sure you're using the correct ID
 const assignHorseToKutsero = async (horse: AvailableHorse) => {
   if (!userData || !userData.profile?.kutsero_id) {
     Alert.alert("Error", "User information not available")
@@ -673,16 +674,21 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
   
   setIsAssigning(true)
   try {
-    const url = `${API_BASE_URL}/assign_horse/`
+    console.log("DEBUG: Horse object:", horse)
+    console.log("DEBUG: Horse owner_id type:", typeof horse.owner_id, "value:", horse.owner_id)
     
+    // If owner_id is a UUID, we might need to fetch the actual op_id
+    // First try with the current owner_id
     const payload = {
       horse_id: horse.id,
-      op_id: horse.owner_id,
+      op_id: horse.owner_id,  // This might be the issue
       kutsero_id: userData.profile.kutsero_id,
       date_start: new Date().toISOString()
     }
     
-    const response = await fetch(url, {
+    console.log("DEBUG: Payload:", payload)
+    
+    const response = await fetch(`${API_BASE_URL}/assign_horse/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -690,56 +696,42 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
       body: JSON.stringify(payload)
     })
     
-    let responseText = await response.text()
+    const responseText = await response.text()
+    console.log("DEBUG: Response text:", responseText)
+    
     let data
     try {
       data = JSON.parse(responseText)
     } catch (parseError) {
-      throw new Error(`Invalid response from server: ${responseText.substring(0, 100)}`)
+      throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`)
     }
     
+    console.log("DEBUG: Parsed data:", data)
+    
     if (response.ok && data.success) {
-      Alert.alert(
-        "Success", 
-        data.message,
-        [{
+      Alert.alert("Success", data.message, [
+        {
           text: "OK",
-          onPress: () => {
-            // Go back to previous screen or refresh
-            router.back()
-          }
-        }]
-      )
-    } else {
-      let errorMessage = data.error || "Failed to assign horse. Please try again."
-      
-      // Clean up the error message
-      if (typeof errorMessage === 'string') {
-        try {
-          const cleaned = errorMessage.replace(/'/g, '"')
-          const parsed = JSON.parse(cleaned)
-          errorMessage = parsed.message || errorMessage
-        } catch (e) {
-          const match = errorMessage.match(/message': '([^']+)'/)
-          if (match && match[1]) {
-            errorMessage = match[1]
-          }
+          onPress: () => router.back()
         }
+      ])
+    } else {
+      let errorMessage = data.error || "Failed to assign horse"
+      
+      // Try to parse the error message
+      if (errorMessage.includes("invalid input syntax for type integer")) {
+        errorMessage = "Database error: Wrong ID format. Please contact support."
       }
       
       Alert.alert("Assignment Failed", errorMessage)
     }
   } catch (error: any) {
-    console.error("Error assigning horse:", error)
-    Alert.alert(
-      "Error", 
-      error.message || "Failed to assign horse. Please check your connection and try again."
-    )
+    console.error("Error:", error)
+    Alert.alert("Error", error.message || "Failed to assign horse")
   } finally {
     setIsAssigning(false)
   }
 }
-
   const getApplicationStatusColor = (status: string) => {
     switch (status) {
       case 'approved': return '#4CAF50'

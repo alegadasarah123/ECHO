@@ -1,5 +1,3 @@
-
-
 import { useRouter } from "expo-router"
 import { useState, useEffect } from "react"
 import {
@@ -65,8 +63,6 @@ interface Event {
   notificationId?: string // Store notification ID for cancellation
 }
 
-
-
 // Configure notifications with proper TypeScript types
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -92,7 +88,6 @@ export default function CalendarScreen() {
   const [ampm, setAmPm] = useState<"AM" | "PM">("AM")
   const [expoPushToken, setExpoPushToken] = useState<string>("")
   const [notificationPermissions, setNotificationPermissions] = useState(false)
-  const [apiError, setApiError] = useState<string>("")
 
   const safeArea = getSafeAreaPadding()
 
@@ -276,7 +271,6 @@ export default function CalendarScreen() {
     setMinute("")
     setAmPm("AM")
     setShowAddEventModal(true)
-    setApiError("")
   }
 
   const saveEventsToSecureStorage = async (events: Event[]): Promise<void> => {
@@ -300,11 +294,9 @@ export default function CalendarScreen() {
   const fetchEvents = async (): Promise<void> => {
     try {
       setLoading(true)
-      setApiError("")
       console.log("Attempting to fetch events from: https://echo-ebl8.onrender.com/api/kutsero/get-calendar-events/")
 
       const response = await fetch(`https://echo-ebl8.onrender.com/api/kutsero/get-calendar-events/`, {
-        // Add timeout for fetch request
         signal: AbortSignal.timeout(10000) // 10 second timeout
       })
 
@@ -337,14 +329,12 @@ export default function CalendarScreen() {
         const localEvents = await loadEventsFromSecureStorage()
         setEvents(localEvents)
         await scheduleAllFutureNotifications(localEvents)
-        setApiError("Unable to connect to server. Using locally stored events.")
       }
     } catch (error) {
       console.error("Network or API error while fetching events:", error)
       const localEvents = await loadEventsFromSecureStorage()
       setEvents(localEvents)
       await scheduleAllFutureNotifications(localEvents)
-      setApiError("Network error. Using locally stored events.")
     } finally {
       setLoading(false)
     }
@@ -392,7 +382,6 @@ export default function CalendarScreen() {
 
     try {
       setLoading(true)
-      setApiError("")
 
       const requestBody = {
         title_event: eventTitle.trim(),
@@ -437,7 +426,7 @@ export default function CalendarScreen() {
         await scheduleNotification(newEvent)
         await scheduleExactTimeNotification(newEvent)
         
-        Alert.alert("Success", "Event saved locally. Could not connect to server.")
+        Alert.alert("Success", "Event saved locally.")
         setShowAddEventModal(false)
       }
     } catch (error) {
@@ -452,9 +441,8 @@ export default function CalendarScreen() {
       await scheduleNotification(newEvent)
       await scheduleExactTimeNotification(newEvent)
       
-      Alert.alert("Success", "Event saved locally due to network error.")
+      Alert.alert("Success", "Event saved locally.")
       setShowAddEventModal(false)
-      setApiError("Network error. Event saved locally.")
     } finally {
       setLoading(false)
     }
@@ -475,7 +463,6 @@ export default function CalendarScreen() {
           onPress: async () => {
             try {
               setLoading(true);
-              setApiError("");
               
               // Cancel all scheduled notifications for this event
               const eventToDelete = events.find(event => event.id === eventId)
@@ -503,7 +490,7 @@ export default function CalendarScreen() {
                 const updatedEvents = events.filter(event => event.id !== eventId);
                 setEvents(updatedEvents);
                 await saveEventsToSecureStorage(updatedEvents);
-                Alert.alert("Success", "Event deleted locally. Could not connect to server.");
+                Alert.alert("Success", "Event deleted locally.");
               }
             } catch (error) {
               console.error("Network or API error while deleting event:", error);
@@ -511,8 +498,7 @@ export default function CalendarScreen() {
               const updatedEvents = events.filter(event => event.id !== eventId);
               setEvents(updatedEvents);
               await saveEventsToSecureStorage(updatedEvents);
-              Alert.alert("Success", "Event deleted locally due to network error.");
-              setApiError("Network error. Event deleted locally.");
+              Alert.alert("Success", "Event deleted locally.");
             } finally {
               setLoading(false);
             }
@@ -730,18 +716,6 @@ export default function CalendarScreen() {
             { paddingBottom: safeArea.bottom + dynamicSpacing(100) },
           ]}
         >
-          {apiError ? (
-            <View style={styles.apiWarning}>
-              <Text style={styles.apiWarningText}>{apiError}</Text>
-              <TouchableOpacity 
-                style={styles.retryButton}
-                onPress={fetchEvents}
-              >
-                <Text style={styles.retryButtonText}>Retry Connection</Text>
-              </TouchableOpacity>
-            </View>
-          ) : null}
-
           <View style={styles.calendarSection}>
             <Text style={styles.sectionTitle}>Calendar</Text>
 
@@ -1019,33 +993,6 @@ const styles = StyleSheet.create({
   },
   scrollContentContainer: {
     flexGrow: 1,
-  },
-  apiWarning: {
-    backgroundColor: '#FFF3CD',
-    marginHorizontal: scale(16),
-    marginTop: dynamicSpacing(16),
-    padding: scale(12),
-    borderRadius: scale(8),
-    borderWidth: 1,
-    borderColor: '#FFEAA7',
-    alignItems: 'center',
-  },
-  apiWarningText: {
-    fontSize: moderateScale(12),
-    color: '#856404',
-    marginBottom: verticalScale(8),
-    textAlign: 'center',
-  },
-  retryButton: {
-    backgroundColor: '#C17A47',
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(8),
-    borderRadius: scale(6),
-  },
-  retryButtonText: {
-    color: 'white',
-    fontSize: moderateScale(12),
-    fontWeight: '600',
   },
   calendarSection: {
     backgroundColor: "white",
