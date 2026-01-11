@@ -860,65 +860,48 @@ export default function DashboardScreen() {
   }
 
   const handleCheckOut = async () => {
-  if (!selectedHorse.currentAssignmentId) {
-    Alert.alert("Error", "No active assignment found. Cannot check out.")
-    return
-  }
+    if (!selectedHorse.currentAssignmentId) {
+      Alert.alert("Error", "No active assignment found. Cannot check out.")
+      return
+    }
 
-  const currentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-  Alert.alert(
-    "Check Out Confirmation",
-    `Check out from ${selectedHorse.name}?\n\nChecked in: ${checkInTime}\nChecking out: ${currentTime}`,
-    [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Check Out",
-        onPress: async () => {
-          try {
-            const kutseroId = userData?.profile?.kutsero_id
-            if (!kutseroId) {
-              Alert.alert("Error", "User information not available")
-              return
-            }
-
-            // Use the correct endpoint for ending assignment
-            const response = await fetch(`${API_BASE_URL}/end_current_assignment/`, {
-              method: "POST",
-              headers: { 
-                "Content-Type": "application/json" 
-              },
-              body: JSON.stringify({
-                kutsero_id: kutseroId
+    const currentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    Alert.alert(
+      "Check Out Confirmation",
+      `Check out from ${selectedHorse.name}?\n\nChecked in: ${checkInTime}\nChecking out: ${currentTime}`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Check Out",
+          onPress: async () => {
+            try {
+              const kutserroId = await SecureStore.getItemAsync("kutseroId")
+              const response = await fetch(`${API_BASE_URL}/checkout/`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  assignment_id: selectedHorse.currentAssignmentId,
+                  kutsero_id: kutserroId,
+                }),
               })
-            })
 
-            const responseText = await response.text()
-            console.log("Checkout response:", responseText)
-            
-            if (response.ok) {
-              const data = JSON.parse(responseText)
-              
-              if (data.success) {
+              if (response.ok) {
                 await SecureStore.deleteItemAsync("checkInData")
                 setIsCheckedIn(false)
                 setCheckInTime(null)
                 setSelectedHorse(defaultHorse)
                 Alert.alert("Success", `Successfully checked out from ${selectedHorse.name}`)
               } else {
-                Alert.alert("Checkout Failed", data.error || "Failed to check out. Please try again.")
+                Alert.alert("Checkout Failed", "Failed to check out. Please try again.")
               }
-            } else {
-              Alert.alert("Checkout Failed", `Failed to check out. Status: ${response.status}`)
+            } catch (error) {
+              Alert.alert("Error", "Failed to check out. Please check your internet connection.")
             }
-          } catch (error) {
-            console.error("Checkout error:", error)
-            Alert.alert("Error", "Failed to check out. Please check your internet connection.")
-          }
+          },
         },
-      },
-    ],
-  )
-}
+      ],
+    )
+  }
 
   useEffect(() => {
     const loadCheckInStatus = async () => {

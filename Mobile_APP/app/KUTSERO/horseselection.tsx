@@ -378,8 +378,6 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
 
     console.log("DEBUG: Loading approved horses with kutsero_id:", kutsero_id)
     
-    // Use the correct endpoint - remove 'get_' prefix if needed
-    // Try both versions to see which one works
     const url = `${API_BASE_URL}/approved_horses/?kutsero_id=${encodeURIComponent(kutsero_id)}`
     console.log("DEBUG: Trying URL:", url)
     
@@ -404,7 +402,6 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
         // Transform horses to match frontend interface
         const transformedHorses: AvailableHorse[] = horses
           .filter((horse: any) => {
-            // Filter out deceased horses
             const horseStatus = horse.status || horse.horse_status || ''
             const isDeceased = horseStatus.toLowerCase() === 'deceased'
             
@@ -422,7 +419,7 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
             sex: horse.sex || horse.horse_sex || 'Unknown',
             color: horse.color || horse.horse_color || 'Unknown',
             image: horse.image || horse.horse_image || '',
-            owner_id: horse.owner_id || '',
+            owner_id: horse.op_id || horse.owner_id || '', // Use op_id instead of owner_id
             owner_name: horse.owner_name || 'Unknown Owner',
             status: horse.status || horse.horse_status || 'available',
             is_assigned: horse.is_assigned || false,
@@ -432,45 +429,14 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
           }))
         
         console.log("DEBUG: After filtering, have", transformedHorses.length, "horses")
+        console.log("DEBUG: Sample horse:", transformedHorses[0])
         setApprovedHorses(transformedHorses)
-        
-        // Also check applications to verify approval status
-        const approvedApplications = myApplications.filter(app => app.status === 'approved')
-        console.log("DEBUG: You have", approvedApplications.length, "approved applications")
       } else {
         console.log("API returned success false:", data.error || "Unknown error")
         setApprovedHorses([])
       }
     } else {
       console.log("API error status:", response.status)
-      try {
-        const errorText = await response.text()
-        console.log("API error response:", errorText)
-      } catch (e) {
-        console.log("Could not parse error response")
-      }
-      
-      // Try the alternative endpoint name
-      console.log("Trying alternative endpoint name...")
-      try {
-        const altUrl = `${API_BASE_URL}/get_approved_owners_horses/?kutsero_id=${encodeURIComponent(kutsero_id)}`
-        const altResponse = await fetch(altUrl, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-          },
-        })
-        
-        if (altResponse.ok) {
-          const altData = await altResponse.json()
-          console.log("DEBUG: Alternative endpoint worked:", altData)
-          // Process data same as above...
-        }
-      } catch (altError) {
-        console.log("Alternative endpoint also failed:", altError)
-      }
-      
       setApprovedHorses([])
     }
     
@@ -675,13 +641,11 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
   setIsAssigning(true)
   try {
     console.log("DEBUG: Horse object:", horse)
-    console.log("DEBUG: Horse owner_id type:", typeof horse.owner_id, "value:", horse.owner_id)
+    console.log("DEBUG: Horse owner_id:", horse.owner_id)
     
-    // If owner_id is a UUID, we might need to fetch the actual op_id
-    // First try with the current owner_id
     const payload = {
       horse_id: horse.id,
-      op_id: horse.owner_id,  // This might be the issue
+      op_id: horse.owner_id,  // This should now be the op_id
       kutsero_id: userData.profile.kutsero_id,
       date_start: new Date().toISOString()
     }
@@ -718,9 +682,20 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
     } else {
       let errorMessage = data.error || "Failed to assign horse"
       
-      // Try to parse the error message
-      if (errorMessage.includes("invalid input syntax for type integer")) {
-        errorMessage = "Database error: Wrong ID format. Please contact support."
+      // Check if there's an active ride
+      if (data.has_active_ride) {
+        Alert.alert(
+          "Active Ride Detected",
+          "You have an active ride with your current horse. Would you like to end the current ride and switch horses?",
+          [
+            { text: "Cancel", style: "cancel" },
+            { 
+              text: "End Ride & Switch", 
+              onPress: () => endCurrentRideAndSwitch(data.current_ride_id, horse) 
+            }
+          ]
+        )
+        return
       }
       
       Alert.alert("Assignment Failed", errorMessage)
@@ -730,6 +705,33 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
     Alert.alert("Error", error.message || "Failed to assign horse")
   } finally {
     setIsAssigning(false)
+  }
+}
+
+const endCurrentRideAndSwitch = async (rideId: string, newHorse: AvailableHorse) => {
+  try {
+    // First end the current ride
+    const endRideResponse = await fetch(`${API_BASE_URL}/end_ride/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ride_id: rideId,
+        end_location: "Switching horses",
+        notes: "Ride ended to switch horses"
+      })
+    })
+    
+    if (endRideResponse.ok) {
+      // Now assign the new horse
+      await assignHorseToKutsero(newHorse)
+    } else {
+      Alert.alert("Error", "Failed to end current ride")
+    }
+  } catch (error) {
+    console.error("Error ending ride:", error)
+    Alert.alert("Error", "Failed to end current ride")
   }
 }
   const getApplicationStatusColor = (status: string) => {

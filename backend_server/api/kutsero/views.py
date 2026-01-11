@@ -5365,70 +5365,68 @@ def assign_horse_to_kutsero(request):
         data = request.data
         kutsero_id = data.get('kutsero_id')
         horse_id = data.get('horse_id')
-        op_id = data.get('op_id')
+        op_id_param = data.get('op_id')
         
-        if not all([kutsero_id, horse_id, op_id]):
+        if not all([kutsero_id, horse_id, op_id_param]):
             return Response({
                 'success': False,
                 'error': 'kutsero_id, horse_id, and op_id are required'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Debug logging
-        print(f"DEBUG: Received data - kutsero_id: {kutsero_id}, horse_id: {horse_id}, op_id: {op_id}")
-        print(f"DEBUG: kutsero_id type: {type(kutsero_id)}, op_id type: {type(op_id)}")
-        
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
-        # First, let's check the actual data types in the database
+        # Debug logging
+        print(f"DEBUG: Received op_id: {op_id_param}, type: {type(op_id_param)}")
+        
+        # Check if op_id_param is a UUID (string) or integer
+        op_id_to_use = None
+        
+        # Try to parse as integer first (direct op_id)
         try:
-            # Check if kutsero is approved by this owner
-            # IMPORTANT: Check if op_id needs to be cast to integer
-            approval_response = service_client.table("op_kutsero_application").select("*").eq("kutsero_id", kutsero_id).eq("op_id", op_id).eq("status", "approved").execute()
-            
-            print(f"DEBUG: Approval response: {approval_response.data}")
-            
-            if not approval_response.data:
-                return Response({
-                    'success': False,
-                    'error': 'You are not approved by this horse owner'
-                }, status=status.HTTP_403_FORBIDDEN)
-        except Exception as e:
-            print(f"DEBUG: Error in approval check: {str(e)}")
-            # Try converting op_id to integer if it's a UUID string
+            op_id_to_use = int(op_id_param)
+            print(f"DEBUG: Using op_id as integer: {op_id_to_use}")
+        except (ValueError, TypeError):
+            # If not integer, it might be a UUID string (user_id)
+            print(f"DEBUG: op_id is not integer, checking if it's a UUID")
+            # Try to find the actual op_id from owner_profile
             try:
-                # Check if op_id is actually the user UUID, we need to get the actual op_id from owner_profile
-                user_response = service_client.table("owner_profile").select("op_id").eq("user_id", op_id).execute()
+                owner_response = service_client.table("owner_profile").select("op_id, user_id").eq("user_id", op_id_param).execute()
                 
-                if not user_response.data:
-                    return Response({
-                        'success': False,
-                        'error': 'Owner not found'
-                    }, status=status.HTTP_404_NOT_FOUND)
-                
-                actual_op_id = user_response.data[0]['op_id']
-                print(f"DEBUG: Converted op_id from {op_id} to {actual_op_id}")
-                
-                # Now check approval with the actual op_id
-                approval_response = service_client.table("op_kutsero_application").select("*").eq("kutsero_id", kutsero_id).eq("op_id", actual_op_id).eq("status", "approved").execute()
-                
-                if not approval_response.data:
-                    return Response({
-                        'success': False,
-                        'error': 'You are not approved by this horse owner'
-                    }, status=status.HTTP_403_FORBIDDEN)
-                
-                # Use the actual op_id for the rest of the function
-                op_id = actual_op_id
-                
-            except Exception as conv_error:
-                print(f"DEBUG: Conversion failed: {str(conv_error)}")
+                if owner_response.data:
+                    op_id_to_use = owner_response.data[0]['op_id']
+                    print(f"DEBUG: Found op_id {op_id_to_use} for user_id {op_id_param}")
+                else:
+                    # Try one more check - maybe op_id_param is actually the owner_name
+                    owner_by_name_response = service_client.table("owner_profile").select("op_id").ilike("owner_name", f"%{op_id_param}%").execute()
+                    if owner_by_name_response.data:
+                        op_id_to_use = owner_by_name_response.data[0]['op_id']
+                        print(f"DEBUG: Found op_id {op_id_to_use} for owner containing {op_id_param}")
+                    else:
+                        return Response({
+                            'success': False,
+                            'error': 'Owner not found. Please provide a valid owner ID'
+                        }, status=status.HTTP_404_NOT_FOUND)
+            except Exception as e:
+                print(f"DEBUG: Error finding owner: {str(e)}")
                 return Response({
                     'success': False,
-                    'error': f'Database error: {str(conv_error)}'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    'error': f'Invalid owner ID format: {str(e)}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Now check if kutsero is approved by this owner using the resolved op_id
+        approval_response = service_client.table("op_kutsero_application").select("*").eq("kutsero_id", kutsero_id).eq("op_id", op_id_to_use).eq("status", "approved").execute()
+        
+        print(f"DEBUG: Approval check for op_id {op_id_to_use}, kutsero_id {kutsero_id}")
+        print(f"DEBUG: Approval response: {approval_response.data}")
+        
+        if not approval_response.data:
+            return Response({
+                'success': False,
+                'error': 'You are not approved by this horse owner'
+            }, status=status.HTTP_403_FORBIDDEN)
         
         # Check if horse exists and belongs to this owner
-        horse_response = service_client.table("horse_profile").select("*").eq("horse_id", horse_id).eq("op_id", op_id).execute()
+        horse_response = service_client.table("horse_profile").select("*").eq("horse_id", horse_id).eq("op_id", op_id_to_use).execute()
         
         if not horse_response.data:
             return Response({
@@ -5459,6 +5457,19 @@ def assign_horse_to_kutsero(request):
                     'success': False,
                     'error': 'This horse is already assigned to you'
                 }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if kutsero has already checked in with current horse
+            # We need to check if there's an active ride for this assignment
+            active_ride_response = service_client.table("rides").select("*").eq("assign_id", current_assignment['assign_id']).is_("end_time", "null").execute()
+            
+            if active_ride_response.data:
+                # There's an active ride - ask if they want to end it
+                return Response({
+                    'success': False,
+                    'error': 'You have an active ride with your current horse. Please end your current ride before switching horses.',
+                    'has_active_ride': True,
+                    'current_ride_id': active_ride_response.data[0]['ride_id']
+                }, status=status.HTTP_400_BAD_REQUEST)
         
         # Check if horse is already assigned to someone else (and not to this kutsero)
         horse_assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse_id).is_("date_end", "null").execute()
@@ -5472,6 +5483,7 @@ def assign_horse_to_kutsero(request):
                 }, status=status.HTTP_400_BAD_REQUEST)
         
         # If kutsero has a current assignment, end it first (switch horses)
+        previous_assignment_ended = False
         if current_assignment:
             # End the current assignment
             end_current_assignment = service_client.table("horse_assignment").update({
@@ -5490,6 +5502,8 @@ def assign_horse_to_kutsero(request):
                 'horse_status': 'available',
                 'updated_at': datetime.now().isoformat()
             }).eq("horse_id", current_assignment['horse_id']).execute()
+            
+            previous_assignment_ended = True
         
         # Create new assignment record
         assign_id = str(uuid.uuid4())
@@ -5522,7 +5536,7 @@ def assign_horse_to_kutsero(request):
         return Response({
             'success': True,
             'message': f'Horse {horse["horse_name"]} has been assigned to you' + 
-                      (f' (replaced your previous assignment)' if current_assignment else ''),
+                      (f' (replaced your previous assignment)' if previous_assignment_ended else ''),
             'horse': {
                 'id': horse['horse_id'],
                 'name': horse['horse_name'],
@@ -5530,8 +5544,15 @@ def assign_horse_to_kutsero(request):
                 'age': horse['horse_age'],
                 'image': horse.get('horse_image')
             },
-            'assignment_id': assign_id,
-            'replaced_previous': bool(current_assignment)
+            'assignment': {
+                'assign_id': assign_id,
+                'date_start': assignment_data['date_start'],
+                'date_end': None,
+                'horse_id': horse_id,
+                'kutsero_id': kutsero_id,
+                'status': 'active'
+            },
+            'previous_assignments_ended': 1 if previous_assignment_ended else 0
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
@@ -5540,15 +5561,6 @@ def assign_horse_to_kutsero(request):
         
         # Format the error message properly
         error_msg = str(e)
-        if "'message':" in error_msg:
-            try:
-                # Try to extract the actual error message
-                import json
-                cleaned = error_msg.replace("'", '"')
-                parsed = json.loads(cleaned)
-                error_msg = parsed.get('message', error_msg)
-            except:
-                pass
         
         return Response({
             'success': False,
