@@ -378,70 +378,84 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
 
     console.log("DEBUG: Loading approved horses with kutsero_id:", kutsero_id)
     
-    const url = `${API_BASE_URL}/approved_horses/?kutsero_id=${encodeURIComponent(kutsero_id)}`
-    console.log("DEBUG: Trying URL:", url)
+    // Try multiple endpoint names
+    const endpoints = [
+      'get_approved_owners_horses',
+      'approved_owners_horses',
+      'available_horses',
+      'horses'
+    ]
     
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-      },
-    })
+    let horses: any[] = []
     
-    console.log("DEBUG: Response status:", response.status)
-    
-    if (response.ok) {
-      const data = await response.json()
-      console.log("DEBUG: Full response data:", data)
-      
-      if (data.success) {
-        const horses = data.horses || []
-        console.log("DEBUG: Found", horses.length, "approved horses from", data.approved_owners?.length || 0, "approved owners")
+    for (const endpoint of endpoints) {
+      try {
+        const url = `${API_BASE_URL}/${endpoint}/?kutsero_id=${encodeURIComponent(kutsero_id)}`
+        console.log("DEBUG: Trying URL:", url)
         
-        // Transform horses to match frontend interface
-        const transformedHorses: AvailableHorse[] = horses
-          .filter((horse: any) => {
-            const horseStatus = horse.status || horse.horse_status || ''
-            const isDeceased = horseStatus.toLowerCase() === 'deceased'
-            
-            if (isDeceased) {
-              console.log(`Filtering out deceased horse: ${horse.name || horse.horse_name}`)
-              return false
-            }
-            return true
-          })
-          .map((horse: any) => ({
-            id: horse.id || horse.horse_id || '',
-            name: horse.name || horse.horse_name || '',
-            breed: horse.breed || horse.horse_breed || 'Unknown',
-            age: horse.age || horse.horse_age || 0,
-            sex: horse.sex || horse.horse_sex || 'Unknown',
-            color: horse.color || horse.horse_color || 'Unknown',
-            image: horse.image || horse.horse_image || '',
-            owner_id: horse.op_id || horse.owner_id || '', // Use op_id instead of owner_id
-            owner_name: horse.owner_name || 'Unknown Owner',
-            status: horse.status || horse.horse_status || 'available',
-            is_assigned: horse.is_assigned || false,
-            is_assigned_to_me: horse.is_assigned_to_me || false,
-            can_select: horse.can_select !== undefined ? horse.can_select : (!horse.is_assigned || horse.is_assigned_to_me),
-            owner_approved: true
-          }))
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+        })
         
-        console.log("DEBUG: After filtering, have", transformedHorses.length, "horses")
-        console.log("DEBUG: Sample horse:", transformedHorses[0])
-        setApprovedHorses(transformedHorses)
-      } else {
-        console.log("API returned success false:", data.error || "Unknown error")
-        setApprovedHorses([])
+        console.log("DEBUG: Response status:", response.status)
+        
+        if (response.ok) {
+          const data = await response.json()
+          console.log("DEBUG: Success with endpoint:", endpoint)
+          
+          if (data.success && data.horses) {
+            horses = data.horses
+            break
+          }
+        }
+      } catch (error: unknown) {
+        // Type-safe error handling
+        if (error instanceof Error) {
+          console.log(`DEBUG: Endpoint ${endpoint} failed:`, error.message)
+        } else {
+          console.log(`DEBUG: Endpoint ${endpoint} failed:`, String(error))
+        }
+        continue
       }
+    }
+    
+    if (horses.length > 0) {
+      const transformedHorses = horses
+        .filter((horse: any) => {
+          const horseStatus = horse.status || horse.horse_status || ''
+          return horseStatus.toLowerCase() !== 'deceased'
+        })
+        .map((horse: any) => ({
+          id: horse.id || horse.horse_id || '',
+          name: horse.name || horse.horse_name || '',
+          breed: horse.breed || horse.horse_breed || 'Unknown',
+          age: horse.age || horse.horse_age || 0,
+          sex: horse.sex || horse.horse_sex || 'Unknown',
+          color: horse.color || horse.horse_color || 'Unknown',
+          image: horse.image || horse.horse_image || '',
+          owner_id: horse.owner_id || '',
+          owner_name: horse.owner_name || 'Unknown Owner',
+          status: horse.status || horse.horse_status || 'available',
+          is_assigned: horse.is_assigned || false,
+          is_assigned_to_me: horse.is_assigned_to_me || false,
+          can_select: horse.can_select !== undefined ? horse.can_select : (!horse.is_assigned || horse.is_assigned_to_me),
+          owner_approved: true
+        }))
+      
+      console.log("SUCCESS: Found", transformedHorses.length, "approved horses")
+      setApprovedHorses(transformedHorses)
     } else {
-      console.log("API error status:", response.status)
+      console.log("No horses found from any endpoint")
       setApprovedHorses([])
     }
     
-  } catch (error) {
-    console.error("Error loading approved horses:", error)
+  } catch (error: unknown) {
+    // Type-safe error handling
+    console.error("Error loading approved horses:", error instanceof Error ? error.message : String(error))
     setApprovedHorses([])
   }
 }
@@ -585,38 +599,22 @@ const proceedWithApplication = async (owner: HorseOwner) => {
 }
 
 
- const handleSelectHorse = (horse: AvailableHorse) => {
-  if (!userData || !userData.profile?.kutsero_id) {
-    Alert.alert("Error", "User information not available")
-    return
-  }
+  const handleSelectHorse = (horse: AvailableHorse) => {
+    if (!userData || !userData.profile?.kutsero_id) {
+      Alert.alert("Error", "User information not available")
+      return
+    }
 
-  if (!horse.can_select) {
-    Alert.alert("Horse Unavailable", "This horse is already assigned to another kutsero.")
-    return
-  }
+    if (!horse.can_select) {
+      Alert.alert("Horse Unavailable", "This horse is already assigned to you or another kutsero.")
+      return
+    }
 
-  if (!horse.owner_approved) {
-    Alert.alert("Owner Not Approved", "You need to be approved by this horse's owner first.")
-    return
-  }
+    if (!horse.owner_approved) {
+      Alert.alert("Owner Not Approved", "You need to be approved by this horse's owner first.")
+      return
+    }
 
-  // Check if user already has a horse assigned
-  const hasCurrentAssignment = approvedHorses.some(h => h.is_assigned_to_me)
-  
-  if (hasCurrentAssignment) {
-    Alert.alert(
-      "Switch Horses",
-      `You already have a horse assigned. Do you want to switch to ${horse.name}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Switch", 
-          onPress: () => assignHorseToKutsero(horse) 
-        }
-      ]
-    )
-  } else {
     Alert.alert(
       "Assign Horse",
       `Do you want to assign ${horse.name} to yourself for work?`,
@@ -629,111 +627,57 @@ const proceedWithApplication = async (owner: HorseOwner) => {
       ]
     )
   }
-}
 
-// In the assignHorseToKutsero function, make sure you're using the correct ID
-const assignHorseToKutsero = async (horse: AvailableHorse) => {
-  if (!userData || !userData.profile?.kutsero_id) {
-    Alert.alert("Error", "User information not available")
-    return
-  }
-  
-  setIsAssigning(true)
-  try {
-    console.log("DEBUG: Horse object:", horse)
-    console.log("DEBUG: Horse owner_id:", horse.owner_id)
-    
-    const payload = {
-      horse_id: horse.id,
-      op_id: horse.owner_id,  // This should now be the op_id
-      kutsero_id: userData.profile.kutsero_id,
-      date_start: new Date().toISOString()
+  const assignHorseToKutsero = async (horse: AvailableHorse) => {
+    if (!userData || !userData.profile?.kutsero_id) {
+      Alert.alert("Error", "User information not available")
+      return
     }
     
-    console.log("DEBUG: Payload:", payload)
-    
-    const response = await fetch(`${API_BASE_URL}/assign_horse/`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload)
-    })
-    
-    const responseText = await response.text()
-    console.log("DEBUG: Response text:", responseText)
-    
-    let data
+    setIsAssigning(true)
     try {
-      data = JSON.parse(responseText)
-    } catch (parseError) {
-      throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`)
-    }
-    
-    console.log("DEBUG: Parsed data:", data)
-    
-    if (response.ok && data.success) {
-      Alert.alert("Success", data.message, [
-        {
-          text: "OK",
-          onPress: () => router.back()
-        }
-      ])
-    } else {
-      let errorMessage = data.error || "Failed to assign horse"
-      
-      // Check if there's an active ride
-      if (data.has_active_ride) {
-        Alert.alert(
-          "Active Ride Detected",
-          "You have an active ride with your current horse. Would you like to end the current ride and switch horses?",
-          [
-            { text: "Cancel", style: "cancel" },
-            { 
-              text: "End Ride & Switch", 
-              onPress: () => endCurrentRideAndSwitch(data.current_ride_id, horse) 
-            }
-          ]
-        )
-        return
-      }
-      
-      Alert.alert("Assignment Failed", errorMessage)
-    }
-  } catch (error: any) {
-    console.error("Error:", error)
-    Alert.alert("Error", error.message || "Failed to assign horse")
-  } finally {
-    setIsAssigning(false)
-  }
-}
-
-const endCurrentRideAndSwitch = async (rideId: string, newHorse: AvailableHorse) => {
-  try {
-    // First end the current ride
-    const endRideResponse = await fetch(`${API_BASE_URL}/end_ride/`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ride_id: rideId,
-        end_location: "Switching horses",
-        notes: "Ride ended to switch horses"
+      const response = await fetch(`${API_BASE_URL}/assign_horse_to_kutsero/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          horse_id: horse.id,
+          op_id: horse.owner_id,
+          kutsero_id: userData.profile.kutsero_id,
+          date_start: new Date().toISOString()
+        })
       })
-    })
-    
-    if (endRideResponse.ok) {
-      // Now assign the new horse
-      await assignHorseToKutsero(newHorse)
-    } else {
-      Alert.alert("Error", "Failed to end current ride")
+      
+      const data = await response.json()
+      
+      console.log("DEBUG: Assign horse response:", data)
+      
+      if (response.ok && data.success) {
+        Alert.alert("Success", data.message, [
+          {
+            text: "OK",
+            onPress: () => {
+              // Go back to previous screen
+              router.back()
+            }
+          }
+        ])
+      } else {
+        Alert.alert(
+          "Assignment Failed",
+          data.error || "Failed to assign horse. Please try again.",
+          [{ text: "OK" }]
+        )
+      }
+    } catch (error) {
+      console.error("Error assigning horse:", error)
+      Alert.alert("Error", "Failed to assign horse. Please check your connection and try again.")
+    } finally {
+      setIsAssigning(false)
     }
-  } catch (error) {
-    console.error("Error ending ride:", error)
-    Alert.alert("Error", "Failed to end current ride")
   }
-}
+
   const getApplicationStatusColor = (status: string) => {
     switch (status) {
       case 'approved': return '#4CAF50'

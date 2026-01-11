@@ -5103,9 +5103,9 @@ def apply_to_owner(request):
     try:
         data = request.data
         kutsero_id = data.get('kutsero_id')
-        op_id = data.get('op_id')
+        op_id_param = data.get('op_id')  # Changed variable name to avoid confusion
         
-        if not kutsero_id or not op_id:
+        if not kutsero_id or not op_id_param:
             return Response({
                 'success': False,
                 'error': 'kutsero_id and op_id are required'
@@ -5113,17 +5113,81 @@ def apply_to_owner(request):
         
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
-        # Check if owner exists
-        owner_response = service_client.table("horse_op_profile").select("*").eq("op_id", op_id).execute()
+        # Debug: Print the received op_id
+        print(f"DEBUG: Received op_id_param: {op_id_param}, type: {type(op_id_param)}")
         
-        if not owner_response.data:
+        # We need to find the correct op_id from the owner_profile table
+        # The op_id_param might be a user_id (UUID) or could be an integer op_id
+        op_id_to_use = None
+        
+        # First, try to find the owner by user_id (UUID)
+        owner_response = service_client.table("owner_profile").select("*").eq("user_id", op_id_param).execute()
+        
+        if owner_response.data:
+            # Found by user_id
+            op_id_to_use = owner_response.data[0]['op_id']
+            print(f"DEBUG: Found owner by user_id. op_id: {op_id_to_use}")
+        else:
+            # Try to find by op_id directly (if op_id_param is already an integer)
+            try:
+                # Check if it's an integer
+                op_id_int = int(op_id_param)
+                owner_by_op_id_response = service_client.table("owner_profile").select("*").eq("op_id", op_id_int).execute()
+                
+                if owner_by_op_id_response.data:
+                    op_id_to_use = op_id_int
+                    print(f"DEBUG: Found owner by op_id. op_id: {op_id_to_use}")
+                else:
+                    # Try to find in horse_op_profile table
+                    horse_op_response = service_client.table("horse_op_profile").select("*").eq("op_id", op_id_param).execute()
+                    
+                    if horse_op_response.data:
+                        # This might be the op_id from horse_op_profile
+                        # We need to get the corresponding owner_profile op_id
+                        horse_owner = horse_op_response.data[0]
+                        # Try to find by email or name
+                        owner_by_email_response = service_client.table("owner_profile").select("*").eq("owner_email", horse_owner.get('op_email')).execute()
+                        
+                        if owner_by_email_response.data:
+                            op_id_to_use = owner_by_email_response.data[0]['op_id']
+                            print(f"DEBUG: Found owner by email. op_id: {op_id_to_use}")
+                        else:
+                            # Create a new owner_profile entry if not found
+                            new_owner_data = {
+                                'owner_name': f"{horse_owner.get('op_fname', '')} {horse_owner.get('op_lname', '')}".strip(),
+                                'owner_email': horse_owner.get('op_email'),
+                                'owner_phone': horse_owner.get('op_phone_num'),
+                                'created_at': datetime.now().isoformat()
+                            }
+                            
+                            new_owner_response = service_client.table("owner_profile").insert(new_owner_data).execute()
+                            
+                            if new_owner_response.data:
+                                op_id_to_use = new_owner_response.data[0]['op_id']
+                                print(f"DEBUG: Created new owner_profile. op_id: {op_id_to_use}")
+            except (ValueError, TypeError):
+                # op_id_param is not an integer
+                pass
+        
+        if not op_id_to_use:
             return Response({
                 'success': False,
-                'error': 'Owner not found'
+                'error': 'Owner not found. Please provide a valid owner ID'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        print(f"DEBUG: Using op_id: {op_id_to_use}")
+        
+        # Check if owner exists in horse_op_profile
+        horse_op_response = service_client.table("horse_op_profile").select("*").eq("op_id", op_id_param).execute()
+        
+        if not horse_op_response.data:
+            return Response({
+                'success': False,
+                'error': 'Owner not found in horse_op_profile'
             }, status=status.HTTP_404_NOT_FOUND)
         
         # Check if already has an application with this owner
-        existing_app_response = service_client.table("op_kutsero_application").select("*").eq("op_id", op_id).eq("kutsero_id", kutsero_id).execute()
+        existing_app_response = service_client.table("op_kutsero_application").select("*").eq("op_id", op_id_param).eq("kutsero_id", kutsero_id).execute()
         
         if existing_app_response.data:
             existing_app = existing_app_response.data[0]
@@ -5145,13 +5209,15 @@ def apply_to_owner(request):
         # Create new application
         application_data = {
             'application_id': str(uuid.uuid4()),
-            'op_id': op_id,
+            'op_id': op_id_param,  # Use the original op_id_param (from horse_op_profile)
             'kutsero_id': kutsero_id,
             'application_date': datetime.now().isoformat(),
             'status': 'pending',
             'created_at': datetime.now().isoformat(),
             'updated_at': datetime.now().isoformat()
         }
+        
+        print(f"DEBUG: Creating application with data: {application_data}")
         
         application_response = service_client.table("op_kutsero_application").insert(application_data).execute()
         
@@ -5164,7 +5230,7 @@ def apply_to_owner(request):
         new_application = application_response.data[0]
         
         # Get owner name for response
-        owner = owner_response.data[0]
+        owner = horse_op_response.data[0]
         owner_name = f"{owner.get('op_fname', '')} {owner.get('op_lname', '')}".strip()
         
         return Response({
