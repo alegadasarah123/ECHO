@@ -5103,7 +5103,7 @@ def apply_to_owner(request):
     try:
         data = request.data
         kutsero_id = data.get('kutsero_id')
-        op_id = data.get('op_id')  # This is from horse_op_profile
+        op_id = data.get('op_id')
         
         if not kutsero_id or not op_id:
             return Response({
@@ -5113,10 +5113,7 @@ def apply_to_owner(request):
         
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
-        print(f"DEBUG: Applying to owner with op_id: {op_id}, kutsero_id: {kutsero_id}")
-        print(f"DEBUG: op_id type: {type(op_id)}, value: {op_id}")
-        
-        # Check if owner exists in horse_op_profile
+        # Check if owner exists
         owner_response = service_client.table("horse_op_profile").select("*").eq("op_id", op_id).execute()
         
         if not owner_response.data:
@@ -5126,35 +5123,9 @@ def apply_to_owner(request):
             }, status=status.HTTP_404_NOT_FOUND)
         
         # Check if already has an application with this owner
-        # First, let's see what's in the op_kutsero_application table
-        try:
-            # Try to query with the op_id as-is
-            existing_app_response = service_client.table("op_kutsero_application").select("*").eq("op_id", op_id).eq("kutsero_id", kutsero_id).execute()
-        except Exception as query_error:
-            print(f"DEBUG: Query error with op_id={op_id}: {str(query_error)}")
-            
-            # The error might be because op_id is wrong type for the table
-            # Let's check what columns the table has
-            sample_data = service_client.table("op_kutsero_application").select("*").limit(1).execute()
-            print(f"DEBUG: Sample data from op_kutsero_application: {sample_data.data}")
-            
-            if sample_data.data:
-                sample_op_id = sample_data.data[0].get('op_id')
-                print(f"DEBUG: Sample op_id in table: {sample_op_id}, type: {type(sample_op_id)}")
-            
-            # Try a different approach - check if op_id needs to be integer
-            try:
-                # Convert op_id to integer if possible
-                integer_op_id = int(op_id)
-                existing_app_response = service_client.table("op_kutsero_application").select("*").eq("op_id", integer_op_id).eq("kutsero_id", kutsero_id).execute()
-                print(f"DEBUG: Successfully queried with integer op_id: {integer_op_id}")
-            except ValueError:
-                # op_id is not convertible to integer
-                print(f"DEBUG: op_id {op_id} is not convertible to integer")
-                existing_app_response = type('obj', (object,), {'data': []})()  # Empty response
+        existing_app_response = service_client.table("op_kutsero_application").select("*").eq("op_id", op_id).eq("kutsero_id", kutsero_id).execute()
         
-        # Process existing applications if any
-        if hasattr(existing_app_response, 'data') and existing_app_response.data:
+        if existing_app_response.data:
             existing_app = existing_app_response.data[0]
             
             if existing_app['status'] == 'pending':
@@ -5172,9 +5143,9 @@ def apply_to_owner(request):
                 service_client.table("op_kutsero_application").delete().eq("application_id", existing_app['application_id']).execute()
         
         # Create new application
-        # We need to figure out what type of op_id the table accepts
         application_data = {
             'application_id': str(uuid.uuid4()),
+            'op_id': op_id,
             'kutsero_id': kutsero_id,
             'application_date': datetime.now().isoformat(),
             'status': 'pending',
@@ -5182,29 +5153,7 @@ def apply_to_owner(request):
             'updated_at': datetime.now().isoformat()
         }
         
-        # Try to determine the correct op_id format
-        try:
-            # First try with the op_id as string (UUID)
-            application_data['op_id'] = op_id
-            application_response = service_client.table("op_kutsero_application").insert(application_data).execute()
-            print(f"DEBUG: Successfully inserted with string op_id")
-        except Exception as insert_error:
-            print(f"DEBUG: Failed with string op_id: {str(insert_error)}")
-            
-            # Try with integer op_id
-            try:
-                # Generate a simple integer from the UUID
-                integer_op_id = sum(ord(char) for char in op_id[:8]) % 100000
-                application_data['op_id'] = integer_op_id
-                application_response = service_client.table("op_kutsero_application").insert(application_data).execute()
-                print(f"DEBUG: Successfully inserted with integer op_id: {integer_op_id}")
-            except Exception as int_insert_error:
-                print(f"DEBUG: Failed with integer op_id: {str(int_insert_error)}")
-                
-                # Last resort: try without op_id (if it's nullable)
-                del application_data['op_id']
-                application_response = service_client.table("op_kutsero_application").insert(application_data).execute()
-                print(f"DEBUG: Successfully inserted without op_id")
+        application_response = service_client.table("op_kutsero_application").insert(application_data).execute()
         
         if not application_response.data:
             return Response({
@@ -5223,7 +5172,7 @@ def apply_to_owner(request):
             'message': 'Application submitted successfully',
             'application': {
                 'id': new_application['application_id'],
-                'op_id': op_id,
+                'op_id': new_application['op_id'],
                 'owner_name': owner_name,
                 'application_date': new_application['application_date'],
                 'status': new_application['status']
@@ -5237,7 +5186,7 @@ def apply_to_owner(request):
             'success': False,
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+
 @api_view(['GET'])
 def get_my_applications(request):
     """
@@ -5416,217 +5365,6 @@ def assign_horse_to_kutsero(request):
         data = request.data
         kutsero_id = data.get('kutsero_id')
         horse_id = data.get('horse_id')
-        op_id_param = data.get('op_id')
-        
-        if not all([kutsero_id, horse_id, op_id_param]):
-            return Response({
-                'success': False,
-                'error': 'kutsero_id, horse_id, and op_id are required'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        
-        # Debug logging
-        print(f"DEBUG: Received op_id: {op_id_param}, type: {type(op_id_param)}")
-        
-        # Check if op_id_param is a UUID (string) or integer
-        op_id_to_use = None
-        
-        # Try to parse as integer first (direct op_id)
-        try:
-            op_id_to_use = int(op_id_param)
-            print(f"DEBUG: Using op_id as integer: {op_id_to_use}")
-        except (ValueError, TypeError):
-            # If not integer, it might be a UUID string (user_id)
-            print(f"DEBUG: op_id is not integer, checking if it's a UUID")
-            # Try to find the actual op_id from owner_profile
-            try:
-                owner_response = service_client.table("owner_profile").select("op_id, user_id").eq("user_id", op_id_param).execute()
-                
-                if owner_response.data:
-                    op_id_to_use = owner_response.data[0]['op_id']
-                    print(f"DEBUG: Found op_id {op_id_to_use} for user_id {op_id_param}")
-                else:
-                    # Try one more check - maybe op_id_param is actually the owner_name
-                    owner_by_name_response = service_client.table("owner_profile").select("op_id").ilike("owner_name", f"%{op_id_param}%").execute()
-                    if owner_by_name_response.data:
-                        op_id_to_use = owner_by_name_response.data[0]['op_id']
-                        print(f"DEBUG: Found op_id {op_id_to_use} for owner containing {op_id_param}")
-                    else:
-                        return Response({
-                            'success': False,
-                            'error': 'Owner not found. Please provide a valid owner ID'
-                        }, status=status.HTTP_404_NOT_FOUND)
-            except Exception as e:
-                print(f"DEBUG: Error finding owner: {str(e)}")
-                return Response({
-                    'success': False,
-                    'error': f'Invalid owner ID format: {str(e)}'
-                }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Now check if kutsero is approved by this owner using the resolved op_id
-        approval_response = service_client.table("op_kutsero_application").select("*").eq("kutsero_id", kutsero_id).eq("op_id", op_id_to_use).eq("status", "approved").execute()
-        
-        print(f"DEBUG: Approval check for op_id {op_id_to_use}, kutsero_id {kutsero_id}")
-        print(f"DEBUG: Approval response: {approval_response.data}")
-        
-        if not approval_response.data:
-            return Response({
-                'success': False,
-                'error': 'You are not approved by this horse owner'
-            }, status=status.HTTP_403_FORBIDDEN)
-        
-        # Check if horse exists and belongs to this owner
-        horse_response = service_client.table("horse_profile").select("*").eq("horse_id", horse_id).eq("op_id", op_id_to_use).execute()
-        
-        if not horse_response.data:
-            return Response({
-                'success': False,
-                'error': 'Horse not found or does not belong to this owner'
-            }, status=status.HTTP_404_NOT_FOUND)
-        
-        horse = horse_response.data[0]
-        
-        # Check if horse is available
-        current_horse_status = horse.get('horse_status')
-        if current_horse_status not in ['available', 'idle', 'assigned']:
-            return Response({
-                'success': False,
-                'error': 'Horse is not available for assignment'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Check if kutsero already has an active assignment
-        kutsero_assignment_response = service_client.table("horse_assignment").select("*").eq("kutsero_id", kutsero_id).is_("date_end", "null").execute()
-        
-        current_assignment = None
-        if kutsero_assignment_response.data:
-            current_assignment = kutsero_assignment_response.data[0]
-            
-            # Check if trying to assign the same horse
-            if current_assignment.get('horse_id') == horse_id:
-                return Response({
-                    'success': False,
-                    'error': 'This horse is already assigned to you'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Check if kutsero has already checked in with current horse
-            # We need to check if there's an active ride for this assignment
-            active_ride_response = service_client.table("rides").select("*").eq("assign_id", current_assignment['assign_id']).is_("end_time", "null").execute()
-            
-            if active_ride_response.data:
-                # There's an active ride - ask if they want to end it
-                return Response({
-                    'success': False,
-                    'error': 'You have an active ride with your current horse. Please end your current ride before switching horses.',
-                    'has_active_ride': True,
-                    'current_ride_id': active_ride_response.data[0]['ride_id']
-                }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Check if horse is already assigned to someone else (and not to this kutsero)
-        horse_assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse_id).is_("date_end", "null").execute()
-        
-        if horse_assignment_response.data:
-            assignment = horse_assignment_response.data[0]
-            if assignment.get('kutsero_id') != kutsero_id:
-                return Response({
-                    'success': False,
-                    'error': 'This horse is already assigned to another kutsero'
-                }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # If kutsero has a current assignment, end it first (switch horses)
-        previous_assignment_ended = False
-        if current_assignment:
-            # End the current assignment
-            end_current_assignment = service_client.table("horse_assignment").update({
-                'date_end': datetime.now().isoformat(),
-                'updated_at': datetime.now().isoformat()
-            }).eq("assign_id", current_assignment['assign_id']).execute()
-            
-            if not end_current_assignment.data:
-                return Response({
-                    'success': False,
-                    'error': 'Failed to end current assignment'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
-            # Update the previous horse's status to available/idle
-            service_client.table("horse_profile").update({
-                'horse_status': 'available',
-                'updated_at': datetime.now().isoformat()
-            }).eq("horse_id", current_assignment['horse_id']).execute()
-            
-            previous_assignment_ended = True
-        
-        # Create new assignment record
-        assign_id = str(uuid.uuid4())
-        assignment_data = {
-            'assign_id': assign_id,
-            'horse_id': horse_id,
-            'kutsero_id': kutsero_id,
-            'date_start': datetime.now().isoformat(),
-            'date_end': None,
-            'created_at': datetime.now().isoformat(),
-            'updated_at': datetime.now().isoformat()
-        }
-        
-        print(f"DEBUG: Creating assignment with data: {assignment_data}")
-        
-        assignment_result = service_client.table("horse_assignment").insert(assignment_data).execute()
-        
-        if not assignment_result.data:
-            return Response({
-                'success': False,
-                'error': 'Failed to create assignment record'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-        # Update new horse status to assigned
-        update_response = service_client.table("horse_profile").update({
-            'horse_status': 'assigned',
-            'updated_at': datetime.now().isoformat()
-        }).eq("horse_id", horse_id).execute()
-        
-        return Response({
-            'success': True,
-            'message': f'Horse {horse["horse_name"]} has been assigned to you' + 
-                      (f' (replaced your previous assignment)' if previous_assignment_ended else ''),
-            'horse': {
-                'id': horse['horse_id'],
-                'name': horse['horse_name'],
-                'breed': horse['horse_breed'],
-                'age': horse['horse_age'],
-                'image': horse.get('horse_image')
-            },
-            'assignment': {
-                'assign_id': assign_id,
-                'date_start': assignment_data['date_start'],
-                'date_end': None,
-                'horse_id': horse_id,
-                'kutsero_id': kutsero_id,
-                'status': 'active'
-            },
-            'previous_assignments_ended': 1 if previous_assignment_ended else 0
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        print(f"ERROR in assign_horse_to_kutsero: {str(e)}")
-        traceback.print_exc()
-        
-        # Format the error message properly
-        error_msg = str(e)
-        
-        return Response({
-            'success': False,
-            'error': error_msg
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-@api_view(['POST'])
-def assign_horse_to_kutsero(request):
-    """
-    Assign a horse from an approved owner to a kutsero
-    """
-    try:
-        data = request.data
-        kutsero_id = data.get('kutsero_id')
-        horse_id = data.get('horse_id')
         op_id = data.get('op_id')
         
         if not all([kutsero_id, horse_id, op_id]):
@@ -5658,66 +5396,36 @@ def assign_horse_to_kutsero(request):
         horse = horse_response.data[0]
         
         # Check if horse is available
-        current_horse_status = horse.get('horse_status')
-        if current_horse_status not in ['available', 'idle', 'assigned']:
+        if horse.get('horse_status') not in ['available', 'idle']:
             return Response({
                 'success': False,
                 'error': 'Horse is not available for assignment'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Check if kutsero already has an active assignment
-        kutsero_assignment_response = service_client.table("horse_assignment").select("*").eq("kutsero_id", kutsero_id).is_("date_end", "null").execute()
+        # Check if horse is already assigned to someone else - Check for active assignments (date_end is null)
+        assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse_id).is_("date_end", "null").execute()
         
-        current_assignment = None
-        if kutsero_assignment_response.data:
-            current_assignment = kutsero_assignment_response.data[0]
-            
-            # Check if trying to assign the same horse
-            if current_assignment.get('horse_id') == horse_id:
-                return Response({
-                    'success': False,
-                    'error': 'This horse is already assigned to you'
-                }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Check if horse is already assigned to someone else (and not to this kutsero)
-        horse_assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse_id).is_("date_end", "null").execute()
-        
-        if horse_assignment_response.data:
-            assignment = horse_assignment_response.data[0]
+        if assignment_response.data:
+            assignment = assignment_response.data[0]
             if assignment.get('kutsero_id') != kutsero_id:
                 return Response({
                     'success': False,
                     'error': 'This horse is already assigned to another kutsero'
                 }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # If kutsero has a current assignment, end it first (switch horses)
-        if current_assignment:
-            # End the current assignment
-            end_current_assignment = service_client.table("horse_assignment").update({
-                'date_end': datetime.now().isoformat(),
-                'updated_at': datetime.now().isoformat()
-            }).eq("assign_id", current_assignment['assign_id']).execute()
-            
-            if not end_current_assignment.data:
+            else:
                 return Response({
                     'success': False,
-                    'error': 'Failed to end current assignment'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
-            # Update the previous horse's status to available/idle
-            service_client.table("horse_profile").update({
-                'horse_status': 'available',
-                'updated_at': datetime.now().isoformat()
-            }).eq("horse_id", current_assignment['horse_id']).execute()
+                    'error': 'This horse is already assigned to you'
+                }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Create new assignment record
+        # Create assignment record - Match your schema
         assign_id = str(uuid.uuid4())
         assignment_data = {
             'assign_id': assign_id,
             'horse_id': horse_id,
             'kutsero_id': kutsero_id,
             'date_start': datetime.now().isoformat(),
-            'date_end': None,
+            'date_end': None,  # Active assignment, no end date
             'created_at': datetime.now().isoformat(),
             'updated_at': datetime.now().isoformat()
         }
@@ -5730,7 +5438,7 @@ def assign_horse_to_kutsero(request):
                 'error': 'Failed to create assignment record'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
-        # Update new horse status to assigned
+        # Update horse status
         update_response = service_client.table("horse_profile").update({
             'horse_status': 'assigned',
             'updated_at': datetime.now().isoformat()
@@ -5738,8 +5446,7 @@ def assign_horse_to_kutsero(request):
         
         return Response({
             'success': True,
-            'message': f'Horse {horse["horse_name"]} has been assigned to you' + 
-                      (f' (replaced your previous assignment)' if current_assignment else ''),
+            'message': f'Horse {horse["horse_name"]} has been assigned to you',
             'horse': {
                 'id': horse['horse_id'],
                 'name': horse['horse_name'],
@@ -5747,14 +5454,128 @@ def assign_horse_to_kutsero(request):
                 'age': horse['horse_age'],
                 'image': horse.get('horse_image')
             },
-            'assignment_id': assign_id,
-            'replaced_previous': bool(current_assignment)
+            'assignment_id': assign_id
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
         print(f"ERROR in assign_horse_to_kutsero: {str(e)}")
         traceback.print_exc()
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+def assign_horse_to_kutsero(request):
+    """
+    Assign a horse from an approved owner to a kutsero
+    """
+    try:
+        data = request.data
+        kutsero_id = data.get('kutsero_id')
+        horse_id = data.get('horse_id')
+        op_id = data.get('op_id')
+        date_start = data.get('date_start')  # Get date_start if provided
         
+        print(f"DEBUG [assign_horse_to_kutsero]: Received data: {data}")
+        
+        if not all([kutsero_id, horse_id, op_id]):
+            return Response({
+                'success': False,
+                'error': 'kutsero_id, horse_id, and op_id are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        # Check if kutsero is approved by this owner
+        approval_response = service_client.table("op_kutsero_application").select("*").eq("kutsero_id", kutsero_id).eq("op_id", op_id).eq("status", "approved").execute()
+        
+        if not approval_response.data:
+            return Response({
+                'success': False,
+                'error': 'You are not approved by this horse owner'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Check if horse exists and belongs to this owner
+        horse_response = service_client.table("horse_profile").select("*").eq("horse_id", horse_id).eq("op_id", op_id).execute()
+        
+        if not horse_response.data:
+            return Response({
+                'success': False,
+                'error': 'Horse not found or does not belong to this owner'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        horse = horse_response.data[0]
+        
+        # Check if horse is available
+        if horse.get('horse_status') not in ['available', 'idle']:
+            return Response({
+                'success': False,
+                'error': 'Horse is not available for assignment'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if horse is already assigned to someone else - Check for active assignments (date_end is null)
+        assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse_id).is_("date_end", "null").execute()
+        
+        if assignment_response.data:
+            assignment = assignment_response.data[0]
+            if assignment.get('kutsero_id') != kutsero_id:
+                return Response({
+                    'success': False,
+                    'error': 'This horse is already assigned to another kutsero'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({
+                    'success': False,
+                    'error': 'This horse is already assigned to you'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create assignment record - Match your schema
+        assign_id = str(uuid.uuid4())
+        assignment_data = {
+            'assign_id': assign_id,
+            'horse_id': horse_id,
+            'kutsero_id': kutsero_id,
+            'date_start': date_start if date_start else datetime.now().isoformat(),
+            'date_end': None,  # Active assignment, no end date
+            'created_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        print(f"DEBUG [assign_horse_to_kutsero]: Creating assignment: {assignment_data}")
+        
+        assignment_result = service_client.table("horse_assignment").insert(assignment_data).execute()
+        
+        if not assignment_result.data:
+            return Response({
+                'success': False,
+                'error': 'Failed to create assignment record'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Update horse status
+        update_response = service_client.table("horse_profile").update({
+            'horse_status': 'assigned',
+            'updated_at': datetime.now().isoformat()
+        }).eq("horse_id", horse_id).execute()
+        
+        print(f"DEBUG [assign_horse_to_kutsero]: Assignment successful for horse {horse['horse_name']}")
+        
+        return Response({
+            'success': True,
+            'message': f'Horse {horse["horse_name"]} has been assigned to you',
+            'horse': {
+                'id': horse['horse_id'],
+                'name': horse['horse_name'],
+                'breed': horse['horse_breed'],
+                'age': horse['horse_age'],
+                'image': horse.get('horse_image')
+            },
+            'assignment_id': assign_id
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        print(f"ERROR in assign_horse_to_kutsero: {str(e)}")
+        traceback.print_exc()
         return Response({
             'success': False,
             'error': str(e)
