@@ -24,6 +24,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
 const { width, height } = Dimensions.get("window")
 
+// Enhanced responsive scaling functions
 const scale = (size: number) => {
   const scaleFactor = width / 375
   const scaledSize = size * scaleFactor
@@ -70,6 +71,7 @@ interface UserData {
   access_token: string
 }
 
+// Interfaces
 interface HorseOwner {
   op_id: string
   name: string
@@ -113,8 +115,10 @@ interface AvailableHorse {
   owner_approved: boolean
 }
 
+// Backend API configuration - MAKE SURE THIS IS CORRECT!
 const API_BASE_URL = "https://echo-ebl8.onrender.com/api/kutsero"
 
+// Helper function to fix image URLs
 const cleanImageUrl = (url: string | undefined): string => {
   if (!url || url === "" || url === "null" || url === "undefined") {
     return "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgdmlld0JveD0iMCAwIDE1MCAxNTAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjE1MCIgaGVpZ2hhdD0iMTUwIiBmaWxsPSIjRjBGMEYwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJTeXN0ZW0iIGZvbnQtc2l6ZT0iMTIiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5ObyBJbWFnZTwvdGV4dD48L3N2Zz4="
@@ -158,12 +162,50 @@ export default function HorseSelectionScreen() {
 
   const safeArea = getSafeAreaPadding()
 
+  // Test API connection
+  const testApiConnection = async () => {
+    try {
+      console.log("Testing API connection to:", API_BASE_URL)
+      
+      // Test health endpoint
+      const healthResponse = await fetch(`${API_BASE_URL}/health/`)
+      console.log("Health check status:", healthResponse.status)
+      
+      if (healthResponse.ok) {
+        const healthData = await healthResponse.json()
+        console.log("Health check data:", healthData)
+      }
+      
+      // Test debug endpoint
+      const debugResponse = await fetch(`${API_BASE_URL}/debug/`)
+      console.log("Debug endpoint status:", debugResponse.status)
+      
+      if (debugResponse.ok) {
+        const debugData = await debugResponse.json()
+        console.log("Debug endpoint data:", debugData)
+      }
+      
+      return true
+    } catch (error) {
+      console.error("API connection test failed:", error)
+      setConnectionError("Cannot connect to server. Please check your internet connection.")
+      return false
+    }
+  }
+
   // Load user data on mount
   useEffect(() => {
     const initialize = async () => {
       try {
         setIsLoading(true)
         setConnectionError(null)
+        
+        // First test API connection
+        const isConnected = await testApiConnection()
+        if (!isConnected) {
+          setIsLoading(false)
+          return
+        }
         
         const storedUserData = await SecureStore.getItemAsync("user_data")
         const storedAccessToken = await SecureStore.getItemAsync("access_token")
@@ -192,6 +234,7 @@ export default function HorseSelectionScreen() {
           setUserData(unifiedUserData)
           console.log("User data loaded. kutsero_id:", kutsero_id)
           
+          // Now load the data with the user data
           await Promise.all([
             loadHorseOwners(unifiedUserData),
             loadMyApplications(unifiedUserData),
@@ -212,6 +255,7 @@ export default function HorseSelectionScreen() {
     initialize()
   }, [])
 
+  // Refresh data when screen is focused
   useFocusEffect(
     useCallback(() => {
       console.log("Screen focused, refreshing data...")
@@ -222,55 +266,57 @@ export default function HorseSelectionScreen() {
   )
 
   const loadHorseOwners = async (userDataParam?: UserData) => {
-    try {
-      const dataToUse = userDataParam || userData
-      const kutsero_id = dataToUse?.profile?.kutsero_id
-      
-      if (!kutsero_id) {
-        console.log("ERROR: No kutsero_id available")
-        setHorseOwners([])
-        return
-      }
-
-      console.log("DEBUG: Loading horse owners for kutsero_id:", kutsero_id)
-      
-      const url = `${API_BASE_URL}/horse_owners/?kutsero_id=${encodeURIComponent(kutsero_id)}`
-      console.log("DEBUG: Full URL:", url)
-      
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        }
-      })
-      
-      console.log("DEBUG: Response status:", response.status)
-      
-      if (response.ok) {
-        const data = await response.json()
-        console.log("DEBUG: Parsed data:", data)
-        
-        if (data.success && data.owners) {
-          console.log("SUCCESS: Found", data.owners.length, "horse owners")
-          setHorseOwners(data.owners || [])
-        } else {
-          console.log("WARNING: API returned success but no owners:", data)
-          setHorseOwners([])
-        }
-      } else {
-        const errorText = await response.text()
-        console.log("ERROR: API returned", response.status, "error:", errorText)
-        setHorseOwners([])
-      }
-      
-    } catch (error: any) {
-      console.error("ERROR in loadHorseOwners:", error.message)
+  try {
+    const dataToUse = userDataParam || userData
+    const kutsero_id = dataToUse?.profile?.kutsero_id
+    
+    if (!kutsero_id) {
+      console.log("ERROR: No kutsero_id available")
       setHorseOwners([])
-      setConnectionError(`Failed to load horse owners: ${error.message}`)
+      return
     }
-  }
 
+    console.log("DEBUG: Loading horse owners for kutsero_id:", kutsero_id)
+    
+    // Try with both query parameter formats
+    const url = `${API_BASE_URL}/horse_owners/?kutsero_id=${encodeURIComponent(kutsero_id)}`
+    console.log("DEBUG: Full URL:", url)
+    
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      }
+    })
+    
+    console.log("DEBUG: Response status:", response.status)
+    console.log("DEBUG: Response headers:", Object.fromEntries(response.headers.entries()))
+    
+    if (response.ok) {
+      const data = await response.json()
+      console.log("DEBUG: Parsed data:", data)
+      
+      if (data.success && data.owners) {
+        console.log("SUCCESS: Found", data.owners.length, "horse owners")
+        setHorseOwners(data.owners || [])
+      } else {
+        console.log("WARNING: API returned success but no owners:", data)
+        setHorseOwners([])
+      }
+    } else {
+      const errorText = await response.text()
+      console.log("ERROR: API returned", response.status, "error:", errorText)
+      setHorseOwners([])
+    }
+    
+  } catch (error: any) {
+    console.error("ERROR in loadHorseOwners:", error.message)
+    console.error("ERROR stack:", error.stack)
+    setHorseOwners([])
+    setConnectionError(`Failed to load horse owners: ${error.message}`)
+  }
+}
   const loadMyApplications = async (userDataParam?: UserData) => {
     try {
       const dataToUse = userDataParam || userData
@@ -283,6 +329,7 @@ export default function HorseSelectionScreen() {
       }
 
       console.log("DEBUG: Loading applications with kutsero_id:", kutsero_id)
+      console.log("DEBUG: URL:", `${API_BASE_URL}/my_applications/?kutsero_id=${kutsero_id}`)
       
       const response = await fetch(
         `${API_BASE_URL}/my_applications/?kutsero_id=${kutsero_id}`,
@@ -318,92 +365,120 @@ export default function HorseSelectionScreen() {
     }
   }
 
-  const loadApprovedHorses = async (userDataParam?: UserData) => {
-    try {
-      const dataToUse = userDataParam || userData
-      const kutsero_id = dataToUse?.profile?.kutsero_id
-      
-      if (!kutsero_id) {
-        console.log("No kutsero_id available")
-        setApprovedHorses([])
-        return
-      }
+const loadApprovedHorses = async (userDataParam?: UserData) => {
+  try {
+    const dataToUse = userDataParam || userData
+    const kutsero_id = dataToUse?.profile?.kutsero_id
+    
+    if (!kutsero_id) {
+      console.log("No kutsero_id available")
+      setApprovedHorses([])
+      return
+    }
 
-      console.log("🟡 DEBUG [loadApprovedHorses]: Loading for kutsero_id:", kutsero_id)
+    console.log("DEBUG: Loading approved horses with kutsero_id:", kutsero_id)
+    
+    // Use the correct endpoint - remove 'get_' prefix if needed
+    // Try both versions to see which one works
+    const url = `${API_BASE_URL}/approved_horses/?kutsero_id=${encodeURIComponent(kutsero_id)}`
+    console.log("DEBUG: Trying URL:", url)
+    
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+    })
+    
+    console.log("DEBUG: Response status:", response.status)
+    
+    if (response.ok) {
+      const data = await response.json()
+      console.log("DEBUG: Full response data:", data)
       
-      const url = `${API_BASE_URL}/approved_horses/?kutsero_id=${encodeURIComponent(kutsero_id)}`
-      console.log("🟡 DEBUG: URL:", url)
-      
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        },
-      })
-      
-      console.log("🟡 DEBUG: Response status:", response.status)
-      
-      if (response.ok) {
-        const data = await response.json()
-        console.log("🟡 DEBUG: Response data:", data)
+      if (data.success) {
+        const horses = data.horses || []
+        console.log("DEBUG: Found", horses.length, "approved horses from", data.approved_owners?.length || 0, "approved owners")
         
-        if (data.success) {
-          const horses = data.horses || []
-          console.log(`🟡 DEBUG: Found ${horses.length} horses`)
-          
-          const transformedHorses: AvailableHorse[] = horses
-            .filter((horse: any) => {
-              const horseStatus = horse.status || horse.horse_status || ''
-              const isDeceased = horseStatus.toLowerCase() === 'deceased'
-              
-              if (isDeceased) {
-                console.log(`Filtering out deceased horse: ${horse.name || horse.horse_name}`)
-                return false
-              }
-              return true
-            })
-            .map((horse: any) => {
-              const isAssigned = horse.is_assigned || false
-              const isAssignedToMe = horse.is_assigned_to_me || false
-              
-              // Allow selecting any horse from approved owners
-              const canSelect = true // Always allow selection since we handle switching in the backend
-              
-              return {
-                id: horse.id || horse.horse_id || '',
-                name: horse.name || horse.horse_name || '',
-                breed: horse.breed || horse.horse_breed || 'Unknown',
-                age: horse.age || horse.horse_age || 0,
-                sex: horse.sex || horse.horse_sex || 'Unknown',
-                color: horse.color || horse.horse_color || 'Unknown',
-                image: horse.image || horse.horse_image || '',
-                owner_id: horse.owner_id || '',
-                owner_name: horse.owner_name || 'Unknown Owner',
-                status: horse.status || horse.horse_status || 'available',
-                is_assigned: isAssigned,
-                is_assigned_to_me: isAssignedToMe,
-                can_select: canSelect,
-                owner_approved: true
-              }
-            })
-          
-          console.log("🟡 DEBUG: Transformed horses:", transformedHorses)
-          setApprovedHorses(transformedHorses)
-        } else {
-          console.log("API returned success false:", data.error || "Unknown error")
-          setApprovedHorses([])
-        }
+        // Transform horses to match frontend interface
+        const transformedHorses: AvailableHorse[] = horses
+          .filter((horse: any) => {
+            // Filter out deceased horses
+            const horseStatus = horse.status || horse.horse_status || ''
+            const isDeceased = horseStatus.toLowerCase() === 'deceased'
+            
+            if (isDeceased) {
+              console.log(`Filtering out deceased horse: ${horse.name || horse.horse_name}`)
+              return false
+            }
+            return true
+          })
+          .map((horse: any) => ({
+            id: horse.id || horse.horse_id || '',
+            name: horse.name || horse.horse_name || '',
+            breed: horse.breed || horse.horse_breed || 'Unknown',
+            age: horse.age || horse.horse_age || 0,
+            sex: horse.sex || horse.horse_sex || 'Unknown',
+            color: horse.color || horse.horse_color || 'Unknown',
+            image: horse.image || horse.horse_image || '',
+            owner_id: horse.owner_id || '',
+            owner_name: horse.owner_name || 'Unknown Owner',
+            status: horse.status || horse.horse_status || 'available',
+            is_assigned: horse.is_assigned || false,
+            is_assigned_to_me: horse.is_assigned_to_me || false,
+            can_select: horse.can_select !== undefined ? horse.can_select : (!horse.is_assigned || horse.is_assigned_to_me),
+            owner_approved: true
+          }))
+        
+        console.log("DEBUG: After filtering, have", transformedHorses.length, "horses")
+        setApprovedHorses(transformedHorses)
+        
+        // Also check applications to verify approval status
+        const approvedApplications = myApplications.filter(app => app.status === 'approved')
+        console.log("DEBUG: You have", approvedApplications.length, "approved applications")
       } else {
-        console.log("API error status:", response.status)
+        console.log("API returned success false:", data.error || "Unknown error")
         setApprovedHorses([])
       }
+    } else {
+      console.log("API error status:", response.status)
+      try {
+        const errorText = await response.text()
+        console.log("API error response:", errorText)
+      } catch (e) {
+        console.log("Could not parse error response")
+      }
       
-    } catch (error) {
-      console.error("Error loading approved horses:", error)
+      // Try the alternative endpoint name
+      console.log("Trying alternative endpoint name...")
+      try {
+        const altUrl = `${API_BASE_URL}/get_approved_owners_horses/?kutsero_id=${encodeURIComponent(kutsero_id)}`
+        const altResponse = await fetch(altUrl, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+        })
+        
+        if (altResponse.ok) {
+          const altData = await altResponse.json()
+          console.log("DEBUG: Alternative endpoint worked:", altData)
+          // Process data same as above...
+        }
+      } catch (altError) {
+        console.log("Alternative endpoint also failed:", altError)
+      }
+      
       setApprovedHorses([])
     }
+    
+  } catch (error) {
+    console.error("Error loading approved horses:", error)
+    setApprovedHorses([])
   }
+}
 
   const refreshData = async () => {
     if (!userData) {
@@ -445,7 +520,7 @@ export default function HorseSelectionScreen() {
 
     Alert.alert(
       "Apply to Owner",
-      `Are you sure you want to apply to ${owner.full_name}?`,
+      `Are you sure you want to apply to ${owner.full_name}? You will need to wait for their approval before using their horses.`,
       [
         { text: "Cancel", style: "cancel" },
         { 
@@ -456,93 +531,102 @@ export default function HorseSelectionScreen() {
     )
   }
 
-  const proceedWithApplication = async (owner: HorseOwner) => {
-    if (!userData?.profile?.kutsero_id) {
-      Alert.alert("Error", "User information not available")
-      return
+const proceedWithApplication = async (owner: HorseOwner) => {
+  if (!userData?.profile?.kutsero_id) {
+    Alert.alert("Error", "User information not available")
+    return
+  }
+
+  setIsApplying(true)
+
+  try {
+    const payload = {
+      op_id: owner.op_id,
+      kutsero_id: userData.profile.kutsero_id
     }
 
-    setIsApplying(true)
+    console.log("DEBUG: Sending application", payload)
 
+    const response = await fetch(
+      `${API_BASE_URL}/apply_to_owner/`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload)
+      }
+    )
+
+    let data
     try {
-      const payload = {
-        op_id: owner.op_id,
-        kutsero_id: userData.profile.kutsero_id
-      }
+      data = await response.json()
+    } catch (parseError) {
+      console.log("DEBUG: Failed to parse JSON response")
+      const textResponse = await response.text()
+      console.log("DEBUG: Raw response:", textResponse)
+      throw new Error(`Invalid response from server: ${textResponse}`)
+    }
 
-      console.log("DEBUG: Sending application", payload)
+    console.log("DEBUG: Status:", response.status)
+    console.log("DEBUG: Data:", data)
 
-      const response = await fetch(
-        `${API_BASE_URL}/apply_to_owner/`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload)
-        }
+    if (response.ok && data.success) {
+      Alert.alert(
+        "Application Submitted",
+        `Your application to ${owner.full_name} has been submitted.`,
+        [{
+          text: "OK",
+          onPress: () => {
+            refreshData()
+            setActiveTab("applications")
+          }
+        }]
       )
+    } else {
+      let errorMessage = data.error || "Failed to submit application"
 
-      let data
-      try {
-        data = await response.json()
-      } catch (parseError) {
-        console.log("DEBUG: Failed to parse JSON response")
-        const textResponse = await response.text()
-        console.log("DEBUG: Raw response:", textResponse)
-        throw new Error(`Invalid response from server: ${textResponse}`)
-      }
-
-      console.log("DEBUG: Status:", response.status)
-      console.log("DEBUG: Data:", data)
-
-      if (response.ok && data.success) {
-        Alert.alert(
-          "Application Submitted",
-          `Your application to ${owner.full_name} has been submitted.`,
-          [{
-            text: "OK",
-            onPress: () => {
-              refreshData()
-              setActiveTab("applications")
-            }
-          }]
-        )
-      } else {
-        let errorMessage = data.error || "Failed to submit application"
-
-        if (typeof errorMessage === 'string') {
-          if (errorMessage.includes("'message':")) {
-            try {
-              const cleaned = errorMessage.replace(/'/g, '"')
-              const parsed = JSON.parse(cleaned)
-              errorMessage = parsed.message || errorMessage
-            } catch (e) {
-              const match = errorMessage.match(/message': '([^']+)'/)
-              if (match && match[1]) {
-                errorMessage = match[1]
-              }
+      // Clean up error message
+      if (typeof errorMessage === 'string') {
+        // Remove Python dictionary formatting if present
+        if (errorMessage.includes("'message':")) {
+          try {
+            const cleaned = errorMessage.replace(/'/g, '"')
+            const parsed = JSON.parse(cleaned)
+            errorMessage = parsed.message || errorMessage
+          } catch (e) {
+            // If parsing fails, extract message manually
+            const match = errorMessage.match(/message': '([^']+)'/)
+            if (match && match[1]) {
+              errorMessage = match[1]
             }
           }
         }
-
-        Alert.alert("Application Failed", errorMessage)
       }
 
-    } catch (error: any) {
-      console.error("Apply error:", error)
-      Alert.alert(
-        "Error",
-        error.message || "Failed to submit application. Please check your connection."
-      )
-    } finally {
-      setIsApplying(false)
+      Alert.alert("Application Failed", errorMessage)
     }
-  }
 
-const handleSelectHorse = (horse: AvailableHorse) => {
+  } catch (error: any) {
+    console.error("Apply error:", error)
+    Alert.alert(
+      "Error",
+      error.message || "Failed to submit application. Please check your connection."
+    )
+  } finally {
+    setIsApplying(false)
+  }
+}
+
+
+ const handleSelectHorse = (horse: AvailableHorse) => {
   if (!userData || !userData.profile?.kutsero_id) {
     Alert.alert("Error", "User information not available")
+    return
+  }
+
+  if (!horse.can_select) {
+    Alert.alert("Horse Unavailable", "This horse is already assigned to another kutsero.")
     return
   }
 
@@ -551,38 +635,17 @@ const handleSelectHorse = (horse: AvailableHorse) => {
     return
   }
 
-  // Check if this is the current horse
-  if (horse.is_assigned_to_me) {
-    Alert.alert(
-      "Already Your Horse",
-      `You're already checked in with ${horse.name}.`,
-      [{ text: "OK" }]
-    )
-    return
-  }
-
-  // Check if horse is assigned to someone else
-  if (horse.is_assigned && !horse.is_assigned_to_me) {
-    Alert.alert(
-      "Horse Unavailable",
-      "This horse is already assigned to another kutsero.",
-      [{ text: "OK" }]
-    )
-    return
-  }
-
   // Check if user already has a horse assigned
-  const currentHorse = approvedHorses.find(h => h.is_assigned_to_me)
+  const hasCurrentAssignment = approvedHorses.some(h => h.is_assigned_to_me)
   
-  if (currentHorse) {
-    // Show clear switching message
+  if (hasCurrentAssignment) {
     Alert.alert(
-      "Switch Horse",
-      `You're currently checked in with ${currentHorse.name}.\n\nDo you want to switch to ${horse.name}?`,
+      "Switch Horses",
+      `You already have a horse assigned. Do you want to switch to ${horse.name}?`,
       [
         { text: "Cancel", style: "cancel" },
         { 
-          text: "Switch Horse", 
+          text: "Switch", 
           onPress: () => assignHorseToKutsero(horse) 
         }
       ]
@@ -590,11 +653,11 @@ const handleSelectHorse = (horse: AvailableHorse) => {
   } else {
     Alert.alert(
       "Assign Horse",
-      `Do you want to assign ${horse.name} to yourself?`,
+      `Do you want to assign ${horse.name} to yourself for work?`,
       [
         { text: "Cancel", style: "cancel" },
         { 
-          text: "Assign Horse", 
+          text: "Assign", 
           onPress: () => assignHorseToKutsero(horse) 
         }
       ]
@@ -610,414 +673,72 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
   
   setIsAssigning(true)
   try {
-    console.log("🚀 DEBUG: Starting horse assignment process for:", horse.name)
+    const url = `${API_BASE_URL}/assign_horse/`
     
-    // Check if this is the current horse
-    if (horse.is_assigned_to_me) {
-      Alert.alert(
-        "Already Assigned",
-        `You're already checked in with ${horse.name}.`,
-        [{ text: "OK" }]
-      )
-      setIsAssigning(false)
-      return
+    const payload = {
+      horse_id: horse.id,
+      op_id: horse.owner_id,
+      kutsero_id: userData.profile.kutsero_id,
+      date_start: new Date().toISOString()
     }
     
-    // Check if horse is assigned to someone else
-    if (horse.is_assigned && !horse.is_assigned_to_me) {
-      Alert.alert(
-        "Horse Unavailable",
-        "This horse is already assigned to another kutsero.",
-        [{ text: "OK" }]
-      )
-      setIsAssigning(false)
-      return
-    }
-    
-    // First, let's test if any endpoint works
-    console.log("🟡 DEBUG: Testing API endpoints...")
-    
-    // Try to find the correct endpoint
-    const testEndpoints = [
-      `${API_BASE_URL}/assign_horse_to_kutsero/`,
-      `${API_BASE_URL}/assign_horse_to_kutsero`,
-      `${API_BASE_URL}/assign_horse/`,
-      `${API_BASE_URL}/assign/`,
-    ]
-    
-    let workingEndpoint = null
-    
-    for (const endpoint of testEndpoints) {
-      try {
-        console.log(`🟡 DEBUG: Testing endpoint: ${endpoint}`)
-        const testResponse = await fetch(endpoint, {
-          method: "OPTIONS", // Use OPTIONS to check if endpoint exists
-          headers: {
-            "Content-Type": "application/json",
-          },
-        })
-        
-        console.log(`🟡 DEBUG: Endpoint ${endpoint} status: ${testResponse.status}`)
-        
-        if (testResponse.status !== 404) {
-          workingEndpoint = endpoint
-          console.log(`✅ DEBUG: Found working endpoint: ${endpoint}`)
-          break
-        }
-      } catch (err) {
-        console.log(`❌ DEBUG: Endpoint ${endpoint} error:`, err)
-      }
-    }
-    
-    if (!workingEndpoint) {
-      console.log("❌ DEBUG: No working endpoints found, checking what's available...")
-      
-      // Try to get available endpoints from the API
-      try {
-        const apiInfoResponse = await fetch(API_BASE_URL, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        })
-        
-        if (apiInfoResponse.ok) {
-          const apiInfo = await apiInfoResponse.text()
-          console.log("🟡 DEBUG: API base response:", apiInfo.substring(0, 500))
-        }
-      } catch (err) {
-        console.log("❌ DEBUG: Could not get API info:", err)
-      }
-      
-      Alert.alert(
-        "API Error",
-        "Horse assignment endpoint not found. Please contact support.",
-        [{ text: "OK" }]
-      )
-      return
-    }
-    
-    console.log(`✅ DEBUG: Using endpoint: ${workingEndpoint}`)
-    
-    const response = await fetch(workingEndpoint, {
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        kutsero_id: userData.profile.kutsero_id,
-        horse_id: horse.id,
-        op_id: horse.owner_id,
-        date_start: new Date().toISOString()
-      })
+      body: JSON.stringify(payload)
     })
     
-    const responseText = await response.text()
-    console.log("DEBUG: Response status:", response.status)
-    console.log("DEBUG: Response text:", responseText)
-    
-    if (response.status === 404) {
-      // Still 404 even with this endpoint
-      console.log("❌ DEBUG: Endpoint still returns 404")
-      
-      // Try a different approach - check if we can use a different method
-      Alert.alert(
-        "Endpoint Not Found",
-        "The horse assignment feature is currently unavailable. Please try:\n\n1. Contacting support\n2. Trying again later\n3. Using the web interface",
-        [{ text: "OK" }]
-      )
-      return
-    }
-    
-    // Check if response is HTML error page
-    if (responseText.trim().startsWith('<!') || responseText.includes('<html>') || responseText.includes('<!DOCTYPE')) {
-      console.error("❌ DEBUG: Server returned HTML instead of JSON")
-      
-      // Try to parse HTML for more info
-      if (responseText.includes('Internal Server Error')) {
-        Alert.alert(
-          "Server Error",
-          "Internal server error. Please try again later.",
-          [{ text: "OK" }]
-        )
-      } else {
-        Alert.alert(
-          "Server Error",
-          `Server returned an error page (Status: ${response.status})`,
-          [{ text: "OK" }]
-        )
-      }
-      return
-    }
-    
-    let data: any
+    let responseText = await response.text()
+    let data
     try {
       data = JSON.parse(responseText)
-      console.log("✅ DEBUG: Successfully parsed JSON response:", data)
     } catch (parseError) {
-      console.error("❌ DEBUG: Failed to parse JSON:", parseError)
-      console.log("❌ DEBUG: Raw response:", responseText)
-      
-      // Check if it's a success message in plain text
-      if (responseText.toLowerCase().includes('success') || responseText.toLowerCase().includes('assigned')) {
-        Alert.alert(
-          "Success",
-          "Horse assigned successfully!",
-          [
-            {
-              text: "OK",
-              onPress: () => {
-                refreshData()
-                router.back()
-              }
-            }
-          ]
-        )
-        refreshData()
-        return
-      }
-      
-      Alert.alert(
-        "Server Error",
-        "Server returned an unexpected response format.",
-        [{ text: "OK" }]
-      )
-      return
+      throw new Error(`Invalid response from server: ${responseText.substring(0, 100)}`)
     }
     
-    if (response.ok) {
-      // Check for success
-      if (data.success === true || data.assignment?.assign_id || data.message) {
-        console.log("✅ Horse assignment successful!")
-        
-        let message = data.message || "Horse assigned successfully!"
-        
-        // Show appropriate message
-        if (data.previous_assignments_ended > 0 || message.includes('switched')) {
-          message = `Successfully switched to ${horse.name}!`
-        }
-        
-        Alert.alert(
-          "Success", 
-          message,
-          [
-            {
-              text: "OK",
-              onPress: () => {
-                // Refresh data and go back
-                refreshData()
-                setTimeout(() => router.back(), 500)
-              }
-            }
-          ]
-        )
-        
-        // Refresh data to update UI
-        refreshData()
-      } else {
-        // Handle unexpected response
-        console.log("⚠️ DEBUG: Unexpected response format:", data)
-        
-        // If there's no error but also no clear success, assume it worked
-        if (!data.error) {
-          Alert.alert(
-            "Success",
-            `${horse.name} has been assigned to you!`,
-            [{ 
-              text: "OK",
-              onPress: () => {
-                refreshData()
-                router.back()
-              }
-            }]
-          )
-          refreshData()
-        } else if (data.error.includes('already assigned to you')) {
-          Alert.alert(
-            "Already Assigned",
-            `You're already assigned to ${horse.name}.`,
-            [{ text: "OK" }]
-          )
-        } else {
-          Alert.alert(
-            "Notice",
-            data.message || data.error || "Horse assignment completed",
-            [{ 
-              text: "OK",
-              onPress: () => refreshData()
-            }]
-          )
-        }
-      }
-    } else {
-      // Handle error responses
-      let errorMessage = data.error || data.message || `Failed to assign horse (Status: ${response.status})`
-      
-      console.log("❌ DEBUG: Assignment failed with error:", errorMessage)
-      
-      // Handle specific error cases
-      if (errorMessage.includes('already assigned to you')) {
-        Alert.alert(
-          "Already Assigned",
-          `You're already assigned to ${horse.name}.`,
-          [{ text: "OK" }]
-        )
-      } else if (errorMessage.includes('already assigned to another kutsero')) {
-        Alert.alert(
-          "Horse Unavailable",
-          "This horse is already assigned to another kutsero.",
-          [{ text: "OK" }]
-        )
-      } else if (errorMessage.includes('not approved by this horse owner')) {
-        Alert.alert(
-          "Not Approved",
-          "You are not approved by this horse's owner.",
-          [{ text: "OK" }]
-        )
-      } else if (errorMessage.includes('Horse not found')) {
-        Alert.alert(
-          "Horse Not Found",
-          "The selected horse could not be found.",
-          [{ text: "OK" }]
-        )
-      } else {
-        Alert.alert("Error", errorMessage, [{ text: "OK" }])
-      }
-    }
-    
-  } catch (error: any) {
-    console.error("❌ Error in assignHorseToKutsero:", error)
-    
-    // Check if it's a network error
-    if (error.message && (
-      error.message.includes('Network') || 
-      error.message.includes('network') ||
-      error.message.includes('fetch') ||
-      error.message.includes('Failed to fetch')
-    )) {
+    if (response.ok && data.success) {
       Alert.alert(
-        "Network Error", 
-        "Failed to connect to server. Please check your internet connection and try again.",
-        [{ text: "OK" }]
-      )
-    } else {
-      Alert.alert(
-        "Error", 
-        error.message || "An unexpected error occurred. Please try again.",
-        [{ text: "OK" }]
-      )
-    }
-  } finally {
-    setIsAssigning(false)
-  }
-}
-
-// Separate function to handle forced switching
-const forceSwitchHorse = async (horse: AvailableHorse) => {
-  if (!userData || !userData.profile?.kutsero_id) return
-  
-  setIsAssigning(true)
-  try {
-    console.log("🔄 DEBUG: Attempting forced switch to:", horse.name)
-    
-    // First, try to end any current assignment
-    const endResponse = await fetch(`${API_BASE_URL}/end_current_assignment/`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        kutsero_id: userData.profile.kutsero_id
-      })
-    })
-    
-    const endText = await endResponse.text()
-    console.log("DEBUG: End assignment response:", endText)
-    
-    let endData: any
-    try {
-      endData = JSON.parse(endText)
-    } catch {
-      console.log("DEBUG: Could not parse end assignment response")
-    }
-    
-    // Wait a moment for the database to update
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    // Now try to assign the new horse
-    const assignResponse = await fetch(`${API_BASE_URL}/assign_horse_to_kutsero`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        kutsero_id: userData.profile.kutsero_id,
-        horse_id: horse.id,
-        op_id: horse.owner_id,
-        date_start: new Date().toISOString()
-      })
-    })
-    
-    const assignText = await assignResponse.text()
-    console.log("DEBUG: Assign response:", assignText)
-    
-    if (assignResponse.ok) {
-      let assignData: any
-      try {
-        assignData = JSON.parse(assignText)
-      } catch {
-        assignData = {}
-      }
-      
-      Alert.alert(
-        "Success",
-        `Successfully switched to ${horse.name}!`,
-        [
-          {
-            text: "OK",
-            onPress: () => {
-              refreshData()
-              router.back()
-            }
-          }
-        ]
-      )
-      
-      refreshData()
-    } else {
-      throw new Error("Failed to assign new horse after ending current assignment")
-    }
-    
-  } catch (error) {
-    console.error("Error in forceSwitchHorse:", error)
-    Alert.alert("Error", "Failed to switch horses. Please try again or contact support.")
-  } finally {
-    setIsAssigning(false)
-  }
-}
-
-  // Alternative method if endpoints don't work
-  const handleHorseAssignmentManually = async (horse: AvailableHorse) => {
-    try {
-      if (!userData || !userData.profile?.kutsero_id) return
-      
-      console.log("🛠️ DEBUG: Using manual assignment approach")
-      
-      // For now, just show a message and refresh
-      // In a real implementation, you would make direct Supabase calls here
-      Alert.alert(
-        "Info",
-        `Horse assignment feature is being updated. To assign ${horse.name}, please contact support or try again later.`,
-        [{ 
+        "Success", 
+        data.message,
+        [{
           text: "OK",
-          onPress: () => refreshData()
+          onPress: () => {
+            // Go back to previous screen or refresh
+            router.back()
+          }
         }]
       )
+    } else {
+      let errorMessage = data.error || "Failed to assign horse. Please try again."
       
-    } catch (error) {
-      console.error("Error in manual assignment:", error)
+      // Clean up the error message
+      if (typeof errorMessage === 'string') {
+        try {
+          const cleaned = errorMessage.replace(/'/g, '"')
+          const parsed = JSON.parse(cleaned)
+          errorMessage = parsed.message || errorMessage
+        } catch (e) {
+          const match = errorMessage.match(/message': '([^']+)'/)
+          if (match && match[1]) {
+            errorMessage = match[1]
+          }
+        }
+      }
+      
+      Alert.alert("Assignment Failed", errorMessage)
     }
+  } catch (error: any) {
+    console.error("Error assigning horse:", error)
+    Alert.alert(
+      "Error", 
+      error.message || "Failed to assign horse. Please check your connection and try again."
+    )
+  } finally {
+    setIsAssigning(false)
   }
+}
 
   const getApplicationStatusColor = (status: string) => {
     switch (status) {
@@ -1037,6 +758,7 @@ const forceSwitchHorse = async (horse: AvailableHorse) => {
     }
   }
 
+  // Filter data based on search text
   const filteredOwners = horseOwners.filter(owner => 
     owner.full_name.toLowerCase().includes(searchText.toLowerCase()) ||
     owner.email.toLowerCase().includes(searchText.toLowerCase()) ||
@@ -1055,6 +777,7 @@ const forceSwitchHorse = async (horse: AvailableHorse) => {
     horse.owner_name.toLowerCase().includes(searchText.toLowerCase())
   )
 
+  // Render Owner List Item
   const renderOwnerItem = ({ item }: { item: HorseOwner }) => (
     <TouchableOpacity
       style={styles.ownerCard}
@@ -1128,6 +851,7 @@ const forceSwitchHorse = async (horse: AvailableHorse) => {
     </TouchableOpacity>
   )
 
+  // Render Application List Item
   const renderApplicationItem = ({ item }: { item: Application }) => (
     <View style={[
       styles.applicationCard,
@@ -1170,109 +894,94 @@ const forceSwitchHorse = async (horse: AvailableHorse) => {
     </View>
   )
 
-  const renderHorseItem = ({ item }: { item: AvailableHorse }) => {
-    const hasAssignedHorse = approvedHorses.some(h => h.is_assigned_to_me)
-    const isCurrentHorse = item.is_assigned_to_me
+// Render Horse List Item - UPDATED to remove select button for already assigned horses
+const renderHorseItem = ({ item }: { item: AvailableHorse }) => (
+  <TouchableOpacity
+    style={[
+      styles.horseCard,
+      (!item.can_select || !item.owner_approved) && styles.horseCardDisabled
+    ]}
+    onPress={() => item.can_select && item.owner_approved && handleSelectHorse(item)}
+    disabled={!item.can_select || !item.owner_approved}
+    activeOpacity={(item.can_select && item.owner_approved) ? 0.7 : 1}
+  >
+    {!item.owner_approved && (
+      <View style={styles.notApprovedOverlay}>
+        <Text style={styles.notApprovedText}>Owner Not Approved</Text>
+      </View>
+    )}
     
-    return (
-      <TouchableOpacity
-        style={[
-          styles.horseCard,
-          (!item.owner_approved || (item.is_assigned && !item.is_assigned_to_me)) && styles.horseCardDisabled
-        ]}
-        onPress={() => {
-          if (item.owner_approved && (!item.is_assigned || item.is_assigned_to_me)) {
-            handleSelectHorse(item)
-          }
-        }}
-        disabled={!item.owner_approved || (item.is_assigned && !item.is_assigned_to_me)}
-        activeOpacity={(item.owner_approved && (!item.is_assigned || item.is_assigned_to_me)) ? 0.7 : 1}
-      >
-        {!item.owner_approved && (
-          <View style={styles.notApprovedOverlay}>
-            <Text style={styles.notApprovedText}>Owner Not Approved</Text>
-          </View>
-        )}
-        
-        {item.is_assigned && !item.is_assigned_to_me && (
-          <View style={styles.assignedToOtherOverlay}>
-            <Text style={styles.assignedToOtherText}>Assigned to Another</Text>
-          </View>
-        )}
-        
-        <TouchableOpacity
-          onPress={() => {
-            if (item.image) {
-              setFullScreenImage(cleanImageUrl(item.image))
-            }
-          }}
-          activeOpacity={0.9}
-        >
-          <Image 
-            source={{ uri: cleanImageUrl(item.image) }} 
-            style={styles.horseImage}
-            onError={(e) => console.log(`Failed to load horse image:`, e.nativeEvent.error)}
-          />
-        </TouchableOpacity>
-        
-        <View style={styles.horseInfo}>
-          <View style={styles.horseHeader}>
-            <Text style={styles.horseName}>{item.name}</Text>
-            {item.is_assigned && (
-              <View style={[
-                styles.assignedBadge,
-                item.is_assigned_to_me ? styles.myHorseBadge : styles.otherAssignedBadge
-              ]}>
-                <Text style={styles.assignedBadgeText}>
-                  {item.is_assigned_to_me ? 'Your Horse' : 'Assigned'}
-                </Text>
-              </View>
-            )}
-          </View>
-          
-          <Text style={styles.horseDetails}>
-            {item.breed} • {item.age} years • {item.color}
-          </Text>
-          
-          <Text style={styles.horseOwner}>
-            <FontAwesome name="user" size={12} color="#666" /> {item.owner_name}
-          </Text>
-          
-          {isCurrentHorse && (
-            <Text style={styles.currentHorseText}>
-              ✓ Currently checked in with this horse
+    <TouchableOpacity
+      onPress={() => {
+        if (item.image) {
+          setFullScreenImage(cleanImageUrl(item.image))
+        }
+      }}
+      activeOpacity={0.9}
+    >
+      <Image 
+        source={{ uri: cleanImageUrl(item.image) }} 
+        style={styles.horseImage}
+        onError={(e) => console.log(`Failed to load horse image:`, e.nativeEvent.error)}
+      />
+    </TouchableOpacity>
+    
+    <View style={styles.horseInfo}>
+      <View style={styles.horseHeader}>
+        <Text style={styles.horseName}>{item.name}</Text>
+        {item.is_assigned && (
+          <View style={styles.assignedBadge}>
+            <Text style={styles.assignedBadgeText}>
+              {item.is_assigned_to_me ? 'Your Horse' : 'Assigned'}
             </Text>
-          )}
-        </View>
-        
-        <View style={styles.horseAction}>
-          {item.owner_approved && (!item.is_assigned || item.is_assigned_to_me) ? (
-            <TouchableOpacity
-              style={[
-                styles.selectHorseButton,
-                hasAssignedHorse && !isCurrentHorse && styles.switchHorseButton,
-                isCurrentHorse && styles.currentHorseButton
-              ]}
-              onPress={() => handleSelectHorse(item)}
-              disabled={isAssigning || isCurrentHorse}
-            >
-              <Text style={styles.selectHorseButtonText}>
-                {isAssigning ? '...' : 
-                 isCurrentHorse ? 'Current' :
-                 hasAssignedHorse ? 'Switch' : 'Select'}
-              </Text>
-            </TouchableOpacity>
-          ) : (
-            <MaterialIcons 
-              name={item.is_assigned && !item.is_assigned_to_me ? "block" : "lock"} 
-              size={24} 
-              color="#999" 
-            />
-          )}
-        </View>
-      </TouchableOpacity>
-    )
-  }
+          </View>
+        )}
+      </View>
+      
+      <Text style={styles.horseDetails}>
+        {item.breed} • {item.age} years • {item.color}
+      </Text>
+      
+      <Text style={styles.horseOwner}>
+        <FontAwesome name="user" size={12} color="#666" /> {item.owner_name}
+      </Text>
+      
+      {!item.can_select && !item.is_assigned_to_me && (
+        <Text style={styles.notAvailableText}>
+          Not available for assignment
+        </Text>
+      )}
+      
+      {/* Show message if horse is already assigned to current user */}
+      {item.is_assigned_to_me && (
+        <Text style={styles.alreadyAssignedText}>
+          ✓ Already assigned to you
+        </Text>
+      )}
+    </View>
+    
+    <View style={styles.horseAction}>
+      {item.can_select && item.owner_approved && !item.is_assigned_to_me ? (
+        <TouchableOpacity
+          style={styles.selectHorseButton}
+          onPress={() => handleSelectHorse(item)}
+          disabled={isAssigning}
+        >
+          <Text style={styles.selectHorseButtonText}>
+            {isAssigning ? '...' : 'Select'}
+          </Text>
+        </TouchableOpacity>
+      ) : !item.owner_approved ? (
+        <MaterialIcons name="lock" size={24} color="#999" />
+      ) : item.is_assigned_to_me ? (
+        // Show checkmark instead of button for already assigned horses
+        <MaterialIcons name="check-circle" size={24} color="#4CAF50" />
+      ) : (
+        <MaterialIcons name="block" size={24} color="#999" />
+      )}
+    </View>
+  </TouchableOpacity>
+)
 
   const renderEmptyState = (type: 'owners' | 'applications' | 'horses') => {
     const config = {
@@ -1398,6 +1107,7 @@ const forceSwitchHorse = async (horse: AvailableHorse) => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" />
 
+      {/* Header */}
       <View style={[styles.header, { paddingTop: safeArea.top }]}>
         <View style={styles.headerContent}>
           <TouchableOpacity onPress={() => router.back()}>
@@ -1409,6 +1119,7 @@ const forceSwitchHorse = async (horse: AvailableHorse) => {
           </TouchableOpacity>
         </View>
 
+        {/* Search Bar */}
         <View style={styles.searchContainer}>
           <TextInput
             style={styles.searchInput}
@@ -1432,6 +1143,7 @@ const forceSwitchHorse = async (horse: AvailableHorse) => {
           )}
         </View>
 
+        {/* Tabs */}
         <View style={styles.tabContainer}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'owners' && styles.activeTab]}
@@ -1456,16 +1168,18 @@ const forceSwitchHorse = async (horse: AvailableHorse) => {
             onPress={() => setActiveTab('horses')}
           >
             <Text style={[styles.tabText, activeTab === 'horses' && styles.activeTabText]}>
-              Horses ({approvedHorses.filter(h => !h.is_assigned || h.is_assigned_to_me).length})
+              Horses ({approvedHorses.filter(h => h.can_select && h.owner_approved).length})
             </Text>
           </TouchableOpacity>
         </View>
       </View>
 
+      {/* Content */}
       <View style={styles.content}>
         {renderContent()}
       </View>
 
+      {/* Owner Detail Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -1605,6 +1319,7 @@ const forceSwitchHorse = async (horse: AvailableHorse) => {
         </View>
       </Modal>
 
+      {/* Full Screen Image Modal */}
       <Modal
         visible={fullScreenImage !== null}
         transparent={true}
@@ -1627,6 +1342,7 @@ const forceSwitchHorse = async (horse: AvailableHorse) => {
         </View>
       </Modal>
 
+      {/* Loading Overlay for Assigning */}
       {isAssigning && (
         <View style={styles.loadingOverlay}>
           <View style={styles.loadingContent}>
@@ -1705,7 +1421,10 @@ const styles = StyleSheet.create({
     height: verticalScale(48),
     minHeight: 48,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
     shadowOpacity: 0.1,
     shadowRadius: 3,
     elevation: 3,
@@ -1784,6 +1503,8 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     fontWeight: '600',
   },
+
+  // Owner Card Styles
   ownerCard: {
     backgroundColor: 'white',
     borderRadius: scale(12),
@@ -1890,6 +1611,8 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(12),
     color: '#666',
   },
+
+  // Application Card Styles
   applicationCard: {
     backgroundColor: 'white',
     borderRadius: scale(12),
@@ -1938,6 +1661,8 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: verticalScale(4),
   },
+
+  // Horse Card Styles
   horseCard: {
     backgroundColor: 'white',
     borderRadius: scale(12),
@@ -1953,7 +1678,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   horseCardDisabled: {
-    opacity: 0.7,
+    opacity: 0.6,
   },
   notApprovedOverlay: {
     position: 'absolute',
@@ -1961,7 +1686,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: scale(12),
@@ -1972,27 +1697,6 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(12),
     fontWeight: '600',
     backgroundColor: 'rgba(244, 67, 54, 0.8)',
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(4),
-    borderRadius: scale(4),
-  },
-  assignedToOtherOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(244, 67, 54, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: scale(12),
-    zIndex: 1,
-  },
-  assignedToOtherText: {
-    color: '#F44336',
-    fontSize: moderateScale(12),
-    fontWeight: '600',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     paddingHorizontal: scale(12),
     paddingVertical: verticalScale(4),
     borderRadius: scale(4),
@@ -2028,6 +1732,12 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: verticalScale(4),
   },
+  notAvailableText: {
+    fontSize: moderateScale(11),
+    color: '#F44336',
+    marginTop: verticalScale(4),
+    fontStyle: 'italic',
+  },
   horseAction: {
     marginLeft: scale(8),
   },
@@ -2037,41 +1747,25 @@ const styles = StyleSheet.create({
     paddingVertical: verticalScale(8),
     borderRadius: scale(20),
   },
-  switchHorseButton: {
-    backgroundColor: '#FF9800',
-  },
-  currentHorseButton: {
-    backgroundColor: '#4CAF50',
-  },
   selectHorseButtonText: {
     color: 'white',
     fontSize: moderateScale(12),
     fontWeight: '600',
   },
   assignedBadge: {
+    backgroundColor: '#FF6B6B',
     paddingHorizontal: scale(8),
     paddingVertical: verticalScale(2),
     borderRadius: scale(12),
     marginLeft: scale(8),
-  },
-  myHorseBadge: {
-    backgroundColor: '#4CAF50',
-  },
-  otherAssignedBadge: {
-    backgroundColor: '#FF6B6B',
   },
   assignedBadgeText: {
     color: 'white',
     fontSize: moderateScale(10),
     fontWeight: '600',
   },
-  currentHorseText: {
-    fontSize: moderateScale(11),
-    color: '#4CAF50',
-    marginTop: verticalScale(4),
-    fontStyle: 'italic',
-    fontWeight: '600',
-  },
+
+  // Empty State
   emptyState: {
     flex: 1,
     justifyContent: 'center',
@@ -2105,6 +1799,15 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     fontWeight: '600',
   },
+  // Add this to your styles
+  alreadyAssignedText: {
+    fontSize: moderateScale(11),
+    color: '#4CAF50',
+    marginTop: verticalScale(4),
+    fontStyle: 'italic',
+    fontWeight: '500',
+  },
+  // Owner Detail Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -2261,6 +1964,8 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(16),
     fontWeight: '600',
   },
+
+  // Full Screen Image Modal Styles
   fullScreenContainer: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.95)',
@@ -2287,6 +1992,8 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+
+  // Loading Overlay
   loadingOverlay: {
     position: 'absolute',
     top: 0,
@@ -2304,7 +2011,10 @@ const styles = StyleSheet.create({
     borderRadius: scale(12),
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
     shadowOpacity: 0.2,
     shadowRadius: 5,
     elevation: 5,
