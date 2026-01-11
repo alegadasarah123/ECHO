@@ -1506,7 +1506,7 @@ const handleNotificationClick = async (notification) => {
 
               {chartLoading ? (
                 <div className="animate-pulse">
-                  <div className="h-64 w-64 rounded-full bg-gray-300 mx-auto mt-6"></div>
+                  <div className="h-64 w-64 rounded-full bg-gray-300 mx-auto mb-6"></div>
                   <div className="space-y-3">
                     <div className="h-4 bg-gray-300 rounded w-3/4 mx-auto"></div>
                     <div className="h-4 bg-gray-300 rounded w-1/2 mx-auto"></div>
@@ -1516,7 +1516,7 @@ const handleNotificationClick = async (notification) => {
                 <>
                   {/* Radial Percentage Chart Visualization - Deceased vs Alive */}
                   <div className="flex flex-col items-center">
-                    <div className="relative w-64 h-64 mb-6">
+                    <div className="relative w-64 h-64 mt-6">
                       {/* Radial Percentage Chart */}
                       <svg width="256" height="256" viewBox="0 0 256 256" className="transform -rotate-90">
                         {/* Background Circle */}
@@ -1589,7 +1589,7 @@ const handleNotificationClick = async (notification) => {
                       
                       <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2">
                         <div className="flex flex-col items-center">
-                          <div className="w-4 h-4 bg-gray-300 rounded-full mb-1"></div>
+                          <div className="w-4 h-4 bg-green-300 rounded-full mb-1"></div>
                           <div className="text-xs font-medium text-gray-700 whitespace-nowrap">
                             Alive
                           </div>
@@ -1601,7 +1601,7 @@ const handleNotificationClick = async (notification) => {
                     {/* Detailed Statistics */}
                     <div className="w-full space-y-4">
                       {/* Deceased Horses Detail */}
-                      <div className="p-4 bg-red-50 rounded-lg border border-red-100">
+                      <div className="p-4 bg-red-50 rounded-lg border border-red-100 mt-10">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <div className="relative">
