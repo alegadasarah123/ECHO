@@ -28,7 +28,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed";
+const API_BASE = "http://localhost:8000/api/ctu_vetmed";
 
 const TableSkeleton = () => {
   return (
@@ -1760,7 +1760,13 @@ function CtuHorseRecord() {
 
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
-    fetch(`${API_BASE}/get_vetnotifications/`)
+    fetch("http://localhost:8000/api/ctu_vetmed/get_vetnotifications/", {
+    method: "GET",
+    credentials: "include", // This is CRITICAL - sends cookies/session
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -1796,7 +1802,7 @@ function CtuHorseRecord() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_horses/")
+      const res = await fetch("http://localhost:8000/api/ctu_vetmed/get_horses/")
       if (!res.ok) throw new Error("Failed to fetch horses")
       const data = await res.json()
       setHorseRecords(data)

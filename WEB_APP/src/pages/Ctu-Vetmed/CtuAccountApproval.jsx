@@ -24,8 +24,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
-
+const API_BASE = "http://localhost:8000/api/ctu_vetmed";
 const SkeletonLoader = () => (
   <div className="animate-pulse">
     <div className="flex items-center p-4 border-b border-gray-100">
@@ -384,7 +383,13 @@ function CtuAccountApproval() {
   }
 
   const loadNotifications = useCallback(() => {
-    fetch(`${API_BASE}/get_vetnotifications/`)
+    fetch("http://localhost:8000/api/ctu_vetmed/get_vetnotifications/", {
+    method: "GET",
+    credentials: "include", // This is CRITICAL - sends cookies/session
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()

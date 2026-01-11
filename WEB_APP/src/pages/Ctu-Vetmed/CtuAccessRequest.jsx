@@ -25,7 +25,9 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
-const API_BASE = "https://echo-ebl8.onrender.com/api/ctu-vetmed"
+
+const API_BASE = "http://localhost:8000/api/ctu_vetmed";
+
 
 const SkeletonLoader = ({ activeTab }) => {
   const getGridConfig = () => {
@@ -130,7 +132,7 @@ function CtuAccessRequest() {
   // ✅ MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/mark_all_notifications_read/`, {
+      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/mark_all_notifications_read/`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -398,7 +400,13 @@ const handleNotificationClick = async (notification) => {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/")
+    fetch("http://localhost:8000/api/ctu_vetmed/get_vetnotifications/", {
+    method: "GET",
+    credentials: "include", // This is CRITICAL - sends cookies/session
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -431,7 +439,7 @@ const handleNotificationClick = async (notification) => {
   // Fetch access requests
   const loadAccessRequests = useCallback(() => {
     setIsLoading(true)
-    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_access_requests/")
+    fetch("http://localhost:8000/api/ctu_vetmed/get_access_requests/")
       .then((res) => res.json())
       .then((data) => {
         const formatted = data.map((req) => ({
@@ -480,7 +488,7 @@ const handleNotificationClick = async (notification) => {
   const approveRequest = async (requestId) => {
     try {
       const res = await fetch(
-        `https://echo-ebl8.onrender.com/api/ctu_vetmed/access-requests/${requestId}/approve/`,
+        `http://localhost:8000/api/ctu_vetmed/api/ctu_vetmed/access-requests/${requestId}/approve/`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
