@@ -340,7 +340,13 @@ const handleNotificationClick = async (notification) => {
   };
 
   const loadNotifications = useCallback(() => {
-    fetch(`http://localhost:8000/api/ctu_vetmed/get_vetnotifications/`)
+    fetch("http://localhost:8000/api/ctu_vetmed/get_vetnotifications/", {
+    method: "GET",
+    credentials: "include", // This is CRITICAL - sends cookies/session
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  })
       .then((res) => res.json())
       .then((data) => {
         const formatted = data.map((notif) => ({

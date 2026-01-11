@@ -10,6 +10,7 @@ import {
   X
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 const API_BASE = "http://localhost:8000/api/dvmf";
 
@@ -328,21 +329,17 @@ const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsR
 
   if (!isOpen) return null;
 
-  return (
+  // Create portal to render outside normal DOM hierarchy
+  return createPortal(
     <>
-      <div
+      {/* No backdrop - just the modal floating on top */}
+      <div 
+        ref={modalRef} 
         style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-         
+          ...styles.dropdown,
+          animation: "slideIn 0.2s ease-out"
         }}
-        onClick={onClose}
-      />
-
-      <div ref={modalRef} style={styles.dropdown}>
+      >
         {/* Header */}
         <div style={styles.header}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -523,7 +520,31 @@ const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsR
           </button>
         </div>
       </div>
-    </>
+
+      {/* Add CSS animations */}
+      <style jsx global>{`
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        
+        .spinner {
+          animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </>,
+    document.body // Render directly to body element
   );
 };
 
@@ -566,14 +587,16 @@ const styles = {
     background: "#fff",
     borderRadius: "16px",
     width: "450px",
-    maxWidth: "90vw",
-    maxHeight: "80vh",
+    maxWidth: "calc(100vw - 40px)",
+    maxHeight: "calc(100vh - 100px)",
     boxShadow: "0 20px 60px rgba(0,0,0,0.2), 0 8px 20px rgba(0,0,0,0.15)",
     border: "1px solid #e5e7eb",
-    zIndex: 1000,
+    zIndex: 9999,
     overflow: "hidden",
     display: "flex",
     flexDirection: "column",
+    transform: "translateZ(0)",
+    willChange: "transform",
   },
   header: {
     padding: "16px 20px",
@@ -645,6 +668,7 @@ const styles = {
     overflowY: "auto",
     background: "#fafafa",
     minHeight: "200px",
+    maxHeight: "calc(80vh - 120px)",
   },
   loadingContainer: {
     display: "flex",
@@ -897,6 +921,7 @@ export const NotificationBell = ({ onClick, unreadCount }) => {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        zIndex: 100,
       }}
       title="Notifications"
     >
@@ -920,6 +945,7 @@ export const NotificationBell = ({ onClick, unreadCount }) => {
             justifyContent: "center",
             padding: "0 4px",
             border: "2px solid white",
+            zIndex: 101,
           }}
         >
           {unreadCount > 99 ? "99+" : unreadCount}
