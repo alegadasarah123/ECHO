@@ -376,12 +376,10 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
       return
     }
 
-    console.log("DEBUG: Loading approved horses with kutsero_id:", kutsero_id)
+    console.log("🟡 DEBUG [loadApprovedHorses]: Loading for kutsero_id:", kutsero_id)
     
-    // Use the correct endpoint - remove 'get_' prefix if needed
-    // Try both versions to see which one works
     const url = `${API_BASE_URL}/approved_horses/?kutsero_id=${encodeURIComponent(kutsero_id)}`
-    console.log("DEBUG: Trying URL:", url)
+    console.log("🟡 DEBUG: URL:", url)
     
     const response = await fetch(url, {
       method: "GET",
@@ -391,15 +389,15 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
       },
     })
     
-    console.log("DEBUG: Response status:", response.status)
+    console.log("🟡 DEBUG: Response status:", response.status)
     
     if (response.ok) {
       const data = await response.json()
-      console.log("DEBUG: Full response data:", data)
+      console.log("🟡 DEBUG: Response data:", data)
       
       if (data.success) {
         const horses = data.horses || []
-        console.log("DEBUG: Found", horses.length, "approved horses from", data.approved_owners?.length || 0, "approved owners")
+        console.log(`🟡 DEBUG: Found ${horses.length} horses`)
         
         // Transform horses to match frontend interface
         const transformedHorses: AvailableHorse[] = horses
@@ -414,63 +412,40 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
             }
             return true
           })
-          .map((horse: any) => ({
-            id: horse.id || horse.horse_id || '',
-            name: horse.name || horse.horse_name || '',
-            breed: horse.breed || horse.horse_breed || 'Unknown',
-            age: horse.age || horse.horse_age || 0,
-            sex: horse.sex || horse.horse_sex || 'Unknown',
-            color: horse.color || horse.horse_color || 'Unknown',
-            image: horse.image || horse.horse_image || '',
-            owner_id: horse.owner_id || '',
-            owner_name: horse.owner_name || 'Unknown Owner',
-            status: horse.status || horse.horse_status || 'available',
-            is_assigned: horse.is_assigned || false,
-            is_assigned_to_me: horse.is_assigned_to_me || false,
-            can_select: horse.can_select !== undefined ? horse.can_select : (!horse.is_assigned || horse.is_assigned_to_me),
-            owner_approved: true
-          }))
+          .map((horse: any) => {
+            const isAssigned = horse.is_assigned || false
+            const isAssignedToMe = horse.is_assigned_to_me || false
+            
+            // IMPORTANT: Allow selecting ANY horse that's not assigned to someone else
+            // Even if you already have a horse assigned, you can switch to another one
+            const canSelect = !isAssigned || isAssignedToMe
+            
+            return {
+              id: horse.id || horse.horse_id || '',
+              name: horse.name || horse.horse_name || '',
+              breed: horse.breed || horse.horse_breed || 'Unknown',
+              age: horse.age || horse.horse_age || 0,
+              sex: horse.sex || horse.horse_sex || 'Unknown',
+              color: horse.color || horse.horse_color || 'Unknown',
+              image: horse.image || horse.horse_image || '',
+              owner_id: horse.owner_id || '',
+              owner_name: horse.owner_name || 'Unknown Owner',
+              status: horse.status || horse.horse_status || 'available',
+              is_assigned: isAssigned,
+              is_assigned_to_me: isAssignedToMe,
+              can_select: canSelect, // Allow switching horses
+              owner_approved: true
+            }
+          })
         
-        console.log("DEBUG: After filtering, have", transformedHorses.length, "horses")
+        console.log("🟡 DEBUG: Transformed horses:", transformedHorses)
         setApprovedHorses(transformedHorses)
-        
-        // Also check applications to verify approval status
-        const approvedApplications = myApplications.filter(app => app.status === 'approved')
-        console.log("DEBUG: You have", approvedApplications.length, "approved applications")
       } else {
         console.log("API returned success false:", data.error || "Unknown error")
         setApprovedHorses([])
       }
     } else {
       console.log("API error status:", response.status)
-      try {
-        const errorText = await response.text()
-        console.log("API error response:", errorText)
-      } catch (e) {
-        console.log("Could not parse error response")
-      }
-      
-      // Try the alternative endpoint name
-      console.log("Trying alternative endpoint name...")
-      try {
-        const altUrl = `${API_BASE_URL}/get_approved_owners_horses/?kutsero_id=${encodeURIComponent(kutsero_id)}`
-        const altResponse = await fetch(altUrl, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-          },
-        })
-        
-        if (altResponse.ok) {
-          const altData = await altResponse.json()
-          console.log("DEBUG: Alternative endpoint worked:", altData)
-          // Process data same as above...
-        }
-      } catch (altError) {
-        console.log("Alternative endpoint also failed:", altError)
-      }
-      
       setApprovedHorses([])
     }
     
@@ -656,62 +631,50 @@ const proceedWithApplication = async (owner: HorseOwner) => {
   
   setIsAssigning(true)
   try {
-    console.log("🚀 DEBUG: Starting horse assignment process")
+    console.log("🚀 DEBUG: Assigning horse:", horse.name)
     
-    const url = `${API_BASE_URL}/assign_horse/`
-    console.log("DEBUG: Calling URL:", url)
-    
-    // Payload that matches what backend expects
-    const payload = {
-      kutsero_id: userData.profile.kutsero_id,
-      horse_id: horse.id,
-      op_id: horse.owner_id,
-      date_start: new Date().toISOString()
-    }
-    
-    console.log("DEBUG: Sending payload:", payload)
-    
-    const response = await fetch(url, {
+    const response = await fetch(`${API_BASE_URL}/assign_horse/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        kutsero_id: userData.profile.kutsero_id,
+        horse_id: horse.id,
+        op_id: horse.owner_id,
+        date_start: new Date().toISOString()
+      })
     })
     
-    console.log("DEBUG: Response status:", response.status)
-    
     const responseText = await response.text()
-    console.log("DEBUG: Raw response:", responseText)
+    console.log("DEBUG: Response:", responseText)
     
-    let data
-    try {
-      data = JSON.parse(responseText)
-      console.log("DEBUG: Parsed response data:", data)
-    } catch (parseError) {
-      console.error("DEBUG: Failed to parse JSON:", parseError)
-      throw new Error(`Server returned invalid JSON. Status: ${response.status}`)
-    }
+    const data = JSON.parse(responseText)
     
-    // Check for success based on the actual response structure
     if (response.ok) {
-      // Check different possible success indicators
+      // Check if assignment was successful
       const isSuccess = data.success === true || 
-                       data.message?.toLowerCase().includes('assigned successfully') ||
+                       data.message?.toLowerCase().includes('assigned') ||
                        data.assignment?.assign_id !== undefined
       
       if (isSuccess) {
-        console.log("✅ DEBUG: Horse assignment successful!")
+        console.log("✅ Horse assignment successful!")
         
-        // Show success message
+        let message = data.message || "Horse assigned successfully!"
+        
+        // If previous assignments were ended, update the message
+        if (data.previous_assignments_ended > 0) {
+          message = `Switched to ${horse.name}. Previous horse assignment ended.`
+        }
+        
         Alert.alert(
           "Success", 
-          data.message || "Horse assigned successfully!",
+          message,
           [
             {
               text: "OK",
               onPress: () => {
-                // Navigate back
+                // Go back to previous screen
                 router.back()
               }
             }
@@ -720,37 +683,27 @@ const proceedWithApplication = async (owner: HorseOwner) => {
         
         // Refresh data to update UI
         refreshData()
-        return
+      } else {
+        Alert.alert(
+          "Failed",
+          data.error || data.message || "Failed to assign horse",
+          [{ text: "OK" }]
+        )
       }
+    } else {
+      Alert.alert(
+        "Error",
+        data.error || data.message || "Failed to assign horse",
+        [{ text: "OK" }]
+      )
     }
-    
-    // If we get here, it's an error
-    let errorMessage = "Failed to assign horse"
-    
-    if (data.error) {
-      errorMessage = data.error
-    } else if (data.detail) {
-      errorMessage = data.detail
-    } else if (data.message && !data.message.toLowerCase().includes('success')) {
-      errorMessage = data.message
-    }
-    
-    console.error("DEBUG: Error response:", data)
-    Alert.alert("Assignment Failed", errorMessage, [{ text: "OK" }])
     
   } catch (error: any) {
-    console.error("🚨 Error assigning horse:", error)
-    
-    let errorMessage = error.message || "Failed to assign horse"
-    
-    // Check for network errors
-    if (errorMessage.includes('Network request failed')) {
-      errorMessage = "Network error. Please check your internet connection."
-    } else if (errorMessage.includes('fetch')) {
-      errorMessage = "Cannot connect to server. Please try again later."
-    }
-    
-    Alert.alert("Error", errorMessage, [{ text: "OK" }])
+    console.error("Error:", error)
+    Alert.alert(
+      "Error",
+      "Failed to assign horse. Please try again."
+    )
   } finally {
     setIsAssigning(false)
   }
