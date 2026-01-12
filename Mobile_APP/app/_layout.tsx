@@ -1,6 +1,8 @@
+// app/_layout.tsx
 import { Stack } from "expo-router";
 import { useEffect, useState } from "react";
-import { View, ActivityIndicator } from "react-native";
+import { View } from "react-native";
+import LoadingScreen from "./auth/loading"; // Import your loading screen
 import { getSession, Session } from "../utils/sessionManager";
 
 export default function RootLayout() {
@@ -10,6 +12,9 @@ export default function RootLayout() {
   useEffect(() => {
     async function init() {
       try {
+        // Add a small delay to show the loading screen
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         const session: Session | null = await getSession();
 
         if (session?.user_role) {
@@ -35,19 +40,16 @@ export default function RootLayout() {
     init();
   }, []);
 
+  // Show your loading screen while checking session
   if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" color="#0000ff" />
-      </View>
-    );
+    return <LoadingScreen />;
   }
 
   return (
     <Stack
       initialRouteName={initialRoute}
       screenOptions={{
-        headerShown: false, // hides header globally at root
+        headerShown: false,
       }}
     />
   );
