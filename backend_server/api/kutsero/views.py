@@ -5147,8 +5147,11 @@ def apply_to_owner(request):
     """
     try:
         data = request.data
-        kutsero_id = data.get('kutsero_id')
+        kutsero_id = data.get('kutsero_id')  # This should be user.id from users table
         op_id = data.get('op_id')
+        
+        print(f"DEBUG [apply_to_owner]: Received kutsero_id: {kutsero_id}, op_id: {op_id}")
+        print(f"DEBUG [apply_to_owner]: Type check - kutsero_id is UUID: {is_valid_uuid(kutsero_id)}, op_id is UUID: {is_valid_uuid(op_id)}")
         
         if not kutsero_id or not op_id:
             return Response({
@@ -5156,19 +5159,42 @@ def apply_to_owner(request):
                 'error': 'kutsero_id and op_id are required'
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        # Validate UUID format
+        if not is_valid_uuid(kutsero_id) or not is_valid_uuid(op_id):
+            return Response({
+                'success': False,
+                'error': 'Invalid ID format. Must be valid UUID.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
-        # Check if owner exists - FIX: Use correct column type
+        # Check if owner exists (in horse_op_profile)
         owner_response = service_client.table("horse_op_profile").select("*").eq("op_id", op_id).execute()
         
         if not owner_response.data:
+            print(f"DEBUG: Owner with op_id {op_id} not found in horse_op_profile")
             return Response({
                 'success': False,
                 'error': 'Owner not found'
             }, status=status.HTTP_404_NOT_FOUND)
         
+        # Check if kutsero exists (in kutsero_profile)
+        kutsero_response = service_client.table("kutsero_profile").select("*").eq("kutsero_id", kutsero_id).execute()
+        
+        if not kutsero_response.data:
+            print(f"DEBUG: Kutsero with kutsero_id {kutsero_id} not found in kutsero_profile")
+            # Try to find kutsero by user ID
+            kutsero_by_user = service_client.table("kutsero_profile").select("*").execute()
+            print(f"DEBUG: All kutseros: {kutsero_by_user.data}")
+            return Response({
+                'success': False,
+                'error': 'Kutsero profile not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
         # Check if already has an application with this owner
         existing_app_response = service_client.table("op_kutsero_application").select("*").eq("op_id", op_id).eq("kutsero_id", kutsero_id).execute()
+        
+        print(f"DEBUG: Existing applications found: {len(existing_app_response.data or [])}")
         
         if existing_app_response.data:
             existing_app = existing_app_response.data[0]
@@ -5186,33 +5212,33 @@ def apply_to_owner(request):
             elif existing_app['status'] == 'rejected':
                 # Delete rejected application to allow re-application
                 service_client.table("op_kutsero_application").delete().eq("application_id", existing_app['application_id']).execute()
+                print(f"DEBUG: Deleted rejected application {existing_app['application_id']}")
         
         # Create new application
         application_data = {
             'application_id': str(uuid.uuid4()),
-            'op_id': op_id,  # This should match your database column type
-            'kutsero_id': kutsero_id,  # This should match your database column type
-            'application_date': datetime.now().isoformat(),
+            'op_id': op_id,
+            'kutsero_id': kutsero_id,
+            'application_date': datetime.now().date().isoformat(),  # Date only for date column
             'status': 'pending',
             'created_at': datetime.now().isoformat(),
             'updated_at': datetime.now().isoformat()
         }
         
-        # IMPORTANT: Debug the data being sent
-        print(f"DEBUG: Application data to insert: {application_data}")
-        print(f"DEBUG: kutsero_id type: {type(kutsero_id)}, value: {kutsero_id}")
-        print(f"DEBUG: op_id type: {type(op_id)}, value: {op_id}")
+        print(f"DEBUG: Creating application with data: {application_data}")
         
         try:
             application_response = service_client.table("op_kutsero_application").insert(application_data).execute()
+            print(f"DEBUG: Application insert response: {application_response}")
         except Exception as db_error:
-            print(f"DEBUG: Database error: {db_error}")
-            # Try to get more details about the error
-            return Response({
-                'success': False,
-                'error': f'Database error: {str(db_error)}',
-                'suggestion': 'Check if database columns are UUID type or integer type'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            print(f"DEBUG: Database error details: {str(db_error)}")
+            # Try to get column info
+            try:
+                table_info = service_client.table("op_kutsero_application").select("*").limit(0).execute()
+                print(f"DEBUG: Table structure: {table_info}")
+            except:
+                pass
+            raise db_error
         
         if not application_response.data:
             return Response({
@@ -5241,11 +5267,23 @@ def apply_to_owner(request):
     except Exception as e:
         print(f"ERROR in apply_to_owner: {str(e)}")
         traceback.print_exc()
+        error_msg = str(e)
+        # Clean up error message
+        if '22P02' in error_msg or 'invalid input syntax' in error_msg:
+            error_msg = "Database type error: Please check if all IDs are valid UUIDs."
         return Response({
             'success': False,
-            'error': str(e)
+            'error': error_msg
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+def is_valid_uuid(uuid_string):
+    """Check if string is valid UUID"""
+    try:
+        uuid_obj = uuid.UUID(uuid_string, version=4)
+        return str(uuid_obj) == uuid_string
+    except ValueError:
+        return False
+    
 @api_view(['GET'])
 def get_my_applications(request):
     """
