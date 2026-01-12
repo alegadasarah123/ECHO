@@ -5467,14 +5467,17 @@ def assign_horse_to_kutsero(request):
         
         horse = horse_response.data[0]
         
-        # Check if horse is available
-        if horse.get('horse_status') not in ['available', 'idle']:
+        # Check if horse is available (not deceased/sick)
+        horse_status = str(horse.get('horse_status', '')).lower()
+        exclude_statuses = ['deceased', 'sick', 'ill', 'injured', 'dead']
+        
+        if any(exclude_status in horse_status for exclude_status in exclude_statuses):
             return Response({
                 'success': False,
                 'error': f'Horse is not available for assignment. Current status: {horse.get("horse_status")}'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Check if horse is already assigned (date_end is null)
+        # Check if horse is already assigned to someone else - Check for active assignments (date_end is null)
         assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse_id).is_("date_end", "null").execute()
         
         if assignment_response.data:
@@ -5494,8 +5497,8 @@ def assign_horse_to_kutsero(request):
         assign_id = str(uuid.uuid4())
         assignment_data = {
             'assign_id': assign_id,
-            'horse_id': horse_id,  # This should be UUID
-            'kutsero_id': kutsero_id,  # This should also be UUID
+            'horse_id': horse_id,
+            'kutsero_id': kutsero_id,
             'date_start': date_start if date_start else datetime.now().isoformat(),
             'date_end': None,
             'created_at': datetime.now().isoformat(),
@@ -5504,30 +5507,7 @@ def assign_horse_to_kutsero(request):
         
         print(f"DEBUG: Creating assignment with data: {assignment_data}")
         
-        # Try to insert the assignment
-        try:
-            assignment_result = service_client.table("horse_assignment").insert(assignment_data).execute()
-        except Exception as insert_error:
-            print(f"DEBUG: Insert error details: {insert_error}")
-            # The error might be related to UUID format
-            # Ensure horse_id and kutsero_id are valid UUIDs
-            import re
-            uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
-            
-            if not uuid_pattern.match(horse_id):
-                return Response({
-                    'success': False,
-                    'error': f'Invalid horse_id format: {horse_id}. Must be a valid UUID.'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            if not uuid_pattern.match(kutsero_id):
-                return Response({
-                    'success': False,
-                    'error': f'Invalid kutsero_id format: {kutsero_id}. Must be a valid UUID.'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # If we get here, re-raise the original error
-            raise insert_error
+        assignment_result = service_client.table("horse_assignment").insert(assignment_data).execute()
         
         if not assignment_result.data:
             return Response({
@@ -5543,36 +5523,37 @@ def assign_horse_to_kutsero(request):
         
         print(f"DEBUG: Assignment successful for horse {horse['horse_name']}")
         
+        # Get operator name for response
+        operator_response = service_client.table("horse_op_profile").select("*").eq("op_id", op_id).execute()
+        operator_name = "Unknown Owner"
+        if operator_response.data:
+            operator = operator_response.data[0]
+            operator_name = f"{operator.get('op_fname', '')} {operator.get('op_lname', '')}".strip()
+        
         return Response({
             'success': True,
             'message': f'Horse {horse["horse_name"]} has been assigned to you',
-            'horse': {
-                'id': horse['horse_id'],
-                'name': horse['horse_name'],
-                'breed': horse['horse_breed'],
-                'age': horse['horse_age'],
-                'image': horse.get('horse_image')
-            },
-            'assignment_id': assign_id
+            'assignment': {
+                'id': assign_id,
+                'horse_id': horse['horse_id'],
+                'horse_name': horse['horse_name'],
+                'horse_breed': horse.get('horse_breed'),
+                'horse_age': horse.get('horse_age'),
+                'horse_color': horse.get('horse_color'),
+                'horse_image': horse.get('horse_image'),
+                'operator_name': operator_name,
+                'date_start': assignment_data['date_start']
+            }
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
         print(f"ERROR in assign_horse_to_kutsero: {str(e)}")
         traceback.print_exc()
-        
-        # Check for specific database errors
-        error_msg = str(e)
-        if "invalid input syntax for type integer" in error_msg:
-            return Response({
-                'success': False,
-                'error': 'Database type mismatch. horse_id should be UUID but database expects integer. Please check your database schema.'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
         return Response({
             'success': False,
-            'error': f'Assignment failed: {error_msg}'
+            'error': f'Assignment failed: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+    
 @api_view(['POST'])
 def assign_horse_to_kutsero(request):
     """
