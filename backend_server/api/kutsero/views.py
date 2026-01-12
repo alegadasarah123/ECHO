@@ -5347,39 +5347,116 @@ def get_horse_owners(request):
 @api_view(['POST'])
 def apply_to_owner(request):
     """
-    SIMPLE FIX: Apply to a horse owner - FIXED JSON RESPONSE
+    Apply to a horse owner - BULLETPROOF VERSION
     """
     try:
-        data = request.data
-        kutsero_id = data.get('kutsero_id')
-        op_id = data.get('op_id')
+        # Log the raw request
+        print(f"📥 Received request at: {datetime.now().isoformat()}")
+        print(f"📥 Request method: {request.method}")
+        print(f"📥 Request content type: {request.content_type}")
+        print(f"📥 Request data: {request.data}")
         
-        print(f"🔄 APPLY_TO_OWNER - Simple version")
-        print(f"  Received kutsero_id: {kutsero_id}")
-        print(f"  Received op_id: {op_id}")
+        # Parse JSON if it's in the body
+        if not request.data:
+            try:
+                import json
+                body = json.loads(request.body.decode('utf-8'))
+                kutsero_id = body.get('kutsero_id')
+                op_id = body.get('op_id')
+            except:
+                return Response({
+                    'success': False,
+                    'error': 'Invalid JSON in request body'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            kutsero_id = request.data.get('kutsero_id')
+            op_id = request.data.get('op_id')
         
-        if not kutsero_id or not op_id:
+        print(f"📥 Parsed kutsero_id: {kutsero_id}")
+        print(f"📥 Parsed op_id: {op_id}")
+        
+        if not kutsero_id:
             return Response({
                 'success': False,
-                'error': 'kutsero_id and op_id are required'
+                'error': 'kutsero_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        if not op_id:
+            return Response({
+                'success': False,
+                'error': 'op_id is required'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Clean inputs
         kutsero_id = str(kutsero_id).strip()
         op_id = str(op_id).strip()
         
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        print(f"🧹 Cleaned kutsero_id: {kutsero_id}")
+        print(f"🧹 Cleaned op_id: {op_id}")
         
-        # 1. Check if application already exists
-        print("🔍 Checking existing applications...")
+        # Initialize Supabase client
         try:
-            existing = service_client.table("op_kutsero_application").select(
+            service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+            print("✅ Supabase client created successfully")
+        except Exception as e:
+            print(f"❌ Failed to create Supabase client: {e}")
+            return Response({
+                'success': False,
+                'error': 'Database connection failed'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # 1. Verify the IDs exist
+        print("🔍 Verifying IDs exist...")
+        
+        # Check owner
+        try:
+            print(f"🔍 Checking owner with ID: {op_id}")
+            owner_check = service_client.table("horse_op_profile").select("op_id").eq("op_id", op_id).limit(1).execute()
+            
+            if not owner_check.data:
+                print(f"❌ Owner not found: {op_id}")
+                return Response({
+                    'success': False,
+                    'error': f'Horse owner not found with ID: {op_id[:8]}...'
+                }, status=status.HTTP_404_NOT_FOUND)
+            print(f"✅ Owner exists")
+        except Exception as e:
+            print(f"⚠️ Owner check error: {e}")
+            return Response({
+                'success': False,
+                'error': f'Error verifying owner: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Check kutsero
+        try:
+            print(f"🔍 Checking kutsero with ID: {kutsero_id}")
+            kutsero_check = service_client.table("kutsero_profile").select("kutsero_id").eq("kutsero_id", kutsero_id).limit(1).execute()
+            
+            if not kutsero_check.data:
+                print(f"❌ Kutsero not found: {kutsero_id}")
+                return Response({
+                    'success': False,
+                    'error': f'Kutsero not found with ID: {kutsero_id[:8]}...'
+                }, status=status.HTTP_404_NOT_FOUND)
+            print(f"✅ Kutsero exists")
+        except Exception as e:
+            print(f"⚠️ Kutsero check error: {e}")
+            return Response({
+                'success': False,
+                'error': f'Error verifying kutsero: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # 2. Check for existing application
+        print("🔍 Checking for existing application...")
+        try:
+            existing_response = service_client.table("op_kutsero_application").select(
                 "application_id, status"
             ).eq("op_id", op_id).eq("kutsero_id", kutsero_id).execute()
             
-            if existing.data:
-                app = existing.data[0]
-                status = app.get('status', 'pending')
+            if existing_response.data and len(existing_response.data) > 0:
+                existing = existing_response.data[0]
+                status = existing.get('status', 'pending')
+                print(f"⚠️ Found existing application with status: {status}")
                 
                 if status == 'pending':
                     return Response({
@@ -5392,38 +5469,44 @@ def apply_to_owner(request):
                         'error': 'You are already approved by this owner'
                     }, status=status.HTTP_400_BAD_REQUEST)
                 elif status == 'rejected':
-                    # Delete and continue
-                    service_client.table("op_kutsero_application").delete().eq("application_id", app['application_id']).execute()
+                    print(f"🗑️ Deleting rejected application...")
+                    try:
+                        service_client.table("op_kutsero_application").delete().eq(
+                            "application_id", existing['application_id']
+                        ).execute()
+                        print(f"✅ Deleted rejected application")
+                    except:
+                        print(f"⚠️ Could not delete rejected application")
         except Exception as e:
-            print(f"⚠️ Existing check error: {e}")
+            print(f"⚠️ Existing application check error: {e}")
+            # Continue anyway
         
-        # 2. Create the application
-        print("🔄 Creating application...")
-        
-        application_id = str(uuid.uuid4())
-        current_date = datetime.now().date().isoformat()
-        current_time = datetime.now().isoformat()
-        
-        # Build the data
-        application_data = {
-            'application_id': application_id,
-            'op_id': op_id,
-            'kutsero_id': kutsero_id,
-            'application_date': current_date,
-            'status': 'pending',
-            'created_at': current_time,
-            'updated_at': current_time
-        }
-        
-        print(f"📦 Inserting data: {application_data}")
+        # 3. Create new application
+        print("🔄 Creating new application...")
         
         try:
-            # SINGLE INSERT ATTEMPT
+            application_id = str(uuid.uuid4())
+            current_date = datetime.now().date().isoformat()
+            current_time = datetime.now().isoformat()
+            
+            application_data = {
+                'application_id': application_id,
+                'op_id': op_id,
+                'kutsero_id': kutsero_id,
+                'application_date': current_date,
+                'status': 'pending',
+                'created_at': current_time,
+                'updated_at': current_time
+            }
+            
+            print(f"📦 Application data: {application_data}")
+            
+            # Try the insert
             response = service_client.table("op_kutsero_application").insert(application_data).execute()
             
-            if response.data:
-                print(f"✅ INSERT SUCCESS!")
+            if response.data and len(response.data) > 0:
                 new_app = response.data[0]
+                print(f"✅ Application created successfully! ID: {application_id}")
                 
                 return Response({
                     'success': True,
@@ -5432,7 +5515,7 @@ def apply_to_owner(request):
                         'id': new_app.get('application_id'),
                         'op_id': new_app.get('op_id'),
                         'kutsero_id': new_app.get('kutsero_id'),
-                        'status': new_app.get('status'),
+                        'status': new_app.get('status', 'pending'),
                         'application_date': new_app.get('application_date'),
                         'created_at': new_app.get('created_at')
                     }
@@ -5441,45 +5524,51 @@ def apply_to_owner(request):
                 print(f"❌ No data returned from insert")
                 return Response({
                     'success': False,
-                    'error': 'Insert failed - no data returned from database'
+                    'error': 'Application was not created (no data returned)'
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 
         except Exception as e:
             print(f"❌ Database insert error: {str(e)}")
             
-            # Check for specific error types
-            error_msg = str(e)
+            # Check for common database errors
+            error_msg = str(e).lower()
             
-            if "duplicate key" in error_msg:
+            if 'duplicate' in error_msg:
                 return Response({
                     'success': False,
                     'error': 'Application already exists'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            elif "foreign key" in error_msg:
+            elif 'foreign key' in error_msg:
                 return Response({
                     'success': False,
                     'error': 'Invalid owner or kutsero ID'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            elif "null value" in error_msg:
+            elif 'null' in error_msg:
                 return Response({
                     'success': False,
-                    'error': 'Missing required field'
+                    'error': 'Missing required information'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            else:
-                # Generic database error
+            elif 'integer' in error_msg and 'uuid' in error_msg:
                 return Response({
                     'success': False,
-                    'error': f'Database error: {error_msg[:100]}'
+                    'error': 'Database expects integer but received UUID. Please check database schema.'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            else:
+                return Response({
+                    'success': False,
+                    'error': f'Database error: {str(e)[:100]}'
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
     except Exception as e:
-        print(f"💥 UNEXPECTED ERROR: {str(e)}")
+        print(f"💥 UNHANDLED ERROR in apply_to_owner: {str(e)}")
         import traceback
         traceback.print_exc()
         
+        # Return a proper JSON error response
         return Response({
             'success': False,
-            'error': f'Server error: {str(e)[:100]}'
+            'error': 'Internal server error',
+            'details': str(e)[:100] if str(e) else 'Unknown error'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 @api_view(['GET'])
