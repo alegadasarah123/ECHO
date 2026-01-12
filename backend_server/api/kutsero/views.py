@@ -815,29 +815,25 @@ def checkout(request):
         
         print(f"Checkout request - assignment_id: {assignment_id}, kutsero_id: {kutsero_id}")
         
-        if not assignment_id:
+        if not assignment_id or not kutsero_id:
             return Response({
-                "error": "assignment_id is required"
+                "success": False,
+                "error": "assignment_id and kutsero_id are required"
             }, status=status.HTTP_400_BAD_REQUEST)
         
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
         # Use timezone-aware datetime for consistency
-        from datetime import timezone
         checkout_time = datetime.now(timezone.utc).isoformat()
         
-        # Verify the assignment exists and belongs to the kutsero (if kutsero_id provided)
-        assignment_query = service_client.table("horse_assignment").select(
-            "assign_id, kutsero_id, horse_id, date_start, date_end"
-        ).eq("assign_id", assignment_id)
-        
-        if kutsero_id:
-            assignment_query = assignment_query.eq("kutsero_id", kutsero_id)
-            
-        assignment_response = assignment_query.execute()
+        # Verify the assignment exists and belongs to the kutsero
+        assignment_response = service_client.table("horse_assignment").select(
+            "assign_id, kutsero_id, horse_id, date_start, date_end, horse_profile!inner(horse_name)"
+        ).eq("assign_id", assignment_id).eq("kutsero_id", kutsero_id).execute()
         
         if not assignment_response.data:
             return Response({
+                "success": False,
                 "error": "Assignment not found or you don't have permission to check out from this assignment"
             }, status=status.HTTP_404_NOT_FOUND)
         
@@ -846,51 +842,48 @@ def checkout(request):
         # Check if already checked out
         if assignment.get('date_end'):
             return Response({
+                "success": False,
                 "error": f"Already checked out on {assignment['date_end']}"
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Get horse details for response
-        horse_response = service_client.table("horse_profile").select(
-            "horse_id, horse_name"
-        ).eq("horse_id", assignment['horse_id']).execute()
-        
-        horse_name = "Unknown Horse"
-        if horse_response.data:
-            horse_name = horse_response.data[0].get('horse_name', 'Unknown Horse')
+        horse_name = assignment.get('horse_profile', {}).get('horse_name', 'Unknown Horse')
         
         # Set check-out time
         update_result = service_client.table("horse_assignment").update({
-            "date_end": checkout_time
+            "date_end": checkout_time,
+            "updated_at": checkout_time
         }).eq("assign_id", assignment_id).execute()
         
         if update_result.data:
-            # Calculate work duration with proper timezone handling
+            # Calculate work duration
             try:
-                # Parse both datetimes as timezone-aware
                 checkin_time_str = assignment['date_start']
                 if checkin_time_str.endswith('Z'):
                     checkin_time_str = checkin_time_str.replace('Z', '+00:00')
                 elif not ('+' in checkin_time_str[-6:] or checkin_time_str.endswith('Z')):
-                    # If no timezone info, assume UTC
                     checkin_time_str += '+00:00'
                 
                 checkout_time_str = checkout_time
                 if checkout_time_str.endswith('Z'):
                     checkout_time_str = checkout_time_str.replace('Z', '+00:00')
                 elif not ('+' in checkout_time_str[-6:] or checkout_time_str.endswith('Z')):
-                    # If no timezone info, assume UTC
                     checkout_time_str += '+00:00'
                 
                 checkin_time = datetime.fromisoformat(checkin_time_str)
                 checkout_time_dt = datetime.fromisoformat(checkout_time_str)
                 work_duration = checkout_time_dt - checkin_time
                 
+                hours = work_duration.seconds // 3600
+                minutes = (work_duration.seconds % 3600) // 60
+                duration_str = f"{hours}h {minutes}m"
+                
             except Exception as duration_error:
                 print(f"Error calculating work duration: {duration_error}")
-                work_duration = "Unable to calculate"
+                duration_str = "Unable to calculate"
             
             print(f"Successfully checked out from assignment {assignment_id}")
             return Response({
+                "success": True,
                 "message": f"Successfully checked out from {horse_name}",
                 "assignment": {
                     "assign_id": assignment_id,
@@ -898,11 +891,12 @@ def checkout(request):
                     "horse_name": horse_name,
                     "checked_in_at": assignment['date_start'],
                     "checked_out_at": checkout_time,
-                    "work_duration": str(work_duration)
+                    "work_duration": duration_str
                 }
             }, status=status.HTTP_200_OK)
         else:
             return Response({
+                "success": False,
                 "error": "Failed to update checkout time"
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
@@ -910,8 +904,8 @@ def checkout(request):
         print(f"Error during checkout: {e}")
         import traceback
         print(f"Full traceback: {traceback.format_exc()}")
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        return Response({"success": False, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
 
 @api_view(['POST'])
 def unassign_horse(request):
@@ -1029,97 +1023,132 @@ def current_assignment(request):
 @api_view(['POST'])
 def assign_horse(request):
     """
-    Assign a horse to a kutsero (creates a new assignment record)
-    This represents the kutsero checking in with a horse
+    Assign a horse to a kutsero (creates or updates assignment record)
+    If kutsero already has an assignment, UPDATE it to the new horse
     """
     kutsero_id = request.data.get("kutsero_id")
     horse_id = request.data.get("horse_id")
     date_start = request.data.get("date_start")
-    force_switch = request.data.get("force_switch", False)
     
     print(f"🔄 Assignment request - kutsero_id: {kutsero_id}, horse_id: {horse_id}, date: {date_start}")
     
-    if not all([kutsero_id, horse_id, date_start]):
+    if not all([kutsero_id, horse_id]):
         return Response({
-            "error": "kutsero_id, horse_id, and date_start are required"
+            "success": False,
+            "error": "kutsero_id and horse_id are required"
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         current_time = datetime.now(timezone.utc).isoformat()
         
-        # Step 1: Handle existing assignments if force_switch is enabled
-        previous_assignments_ended = 0
+        # Check if user already has an active assignment
+        active_assignments = service_client.table("horse_assignment").select(
+            "assign_id, horse_id, date_start, horse_profile!inner(horse_name)"
+        ).eq("kutsero_id", kutsero_id).is_("date_end", "null").execute()
         
-        if force_switch:
-            # Find and end any active assignments for this kutsero
-            existing_assignments = service_client.table("horse_assignment").select(
-                "assign_id, horse_id"
-            ).eq("kutsero_id", kutsero_id).is_("date_end", "null").execute()
+        has_active_assignment = len(active_assignments.data) > 0
+        
+        # If user has an active assignment, we'll UPDATE it
+        if has_active_assignment:
+            current_assignment = active_assignments.data[0]
+            current_horse_id = current_assignment['horse_id']
+            current_horse_name = current_assignment.get('horse_profile', {}).get('horse_name', 'Unknown Horse')
             
-            if existing_assignments.data:
-                print(f"🔄 Found {len(existing_assignments.data)} existing assignments to end")
-                for assignment in existing_assignments.data:
-                    # End the existing assignment
-                    service_client.table("horse_assignment").update({
-                        "date_end": current_time
-                    }).eq("assign_id", assignment["assign_id"]).execute()
-                    previous_assignments_ended += 1
-                    print(f"✅ Ended assignment {assignment['assign_id']}")
-        
-        # Step 2: Check if the target horse is available
-        # Look for active assignments (date_end IS NULL) for this horse
-        horse_assignments = service_client.table("horse_assignment").select(
-            "assign_id, kutsero_id"
-        ).eq("horse_id", horse_id).is_("date_end", "null").execute()
-        
-        if horse_assignments.data:
-            # Horse is assigned to someone else
-            assigned_kutsero = horse_assignments.data[0]["kutsero_id"]
-            if assigned_kutsero != kutsero_id:
+            # If trying to assign the SAME horse, just return success
+            if current_horse_id == horse_id:
+                print(f"✅ Already assigned to same horse: {current_horse_name}")
                 return Response({
-                    "error": f"Horse is already assigned to another kutsero (ID: {assigned_kutsero})"
-                }, status=status.HTTP_400_BAD_REQUEST)
-            else:
+                    "success": True,
+                    "message": f"You are already assigned to {current_horse_name}",
+                    "assignment": {
+                        "assign_id": current_assignment["assign_id"],
+                        "horse_id": current_horse_id,
+                        "date_start": current_assignment["date_start"],
+                        "date_end": None
+                    }
+                }, status=status.HTTP_200_OK)
+            
+            # UPDATE the existing assignment to new horse
+            print(f"🔄 Updating assignment from horse {current_horse_id} to {horse_id}")
+            
+            update_result = service_client.table("horse_assignment").update({
+                "horse_id": horse_id,
+                "date_start": current_time,  # Reset start time for the new horse
+                "updated_at": current_time
+            }).eq("assign_id", current_assignment["assign_id"]).execute()
+            
+            if not update_result.data:
                 return Response({
-                    "error": "You already have this horse assigned"
-                }, status=status.HTTP_400_BAD_REQUEST)
+                    "success": False,
+                    "error": "Failed to update horse assignment"
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            updated_assignment = update_result.data[0]
+            assign_id = current_assignment["assign_id"]
+            
+        else:
+            # No active assignment - CREATE a new one
+            print(f"🔧 Creating new assignment for horse {horse_id}")
+            
+            # Check if the target horse is already assigned to someone else
+            horse_assignments = service_client.table("horse_assignment").select(
+                "assign_id, kutsero_id, kutsero_profile!inner(kutsero_fname, kutsero_lname)"
+            ).eq("horse_id", horse_id).is_("date_end", "null").execute()
+            
+            if horse_assignments.data:
+                # Horse is already assigned to someone else
+                assigned_assignment = horse_assignments.data[0]
+                assigned_kutsero = assigned_assignment["kutsero_id"]
+                
+                if assigned_kutsero != kutsero_id:
+                    # Get the kutsero's name who has the horse
+                    kutsero_name = "Another kutsero"
+                    if assigned_assignment.get('kutsero_profile'):
+                        profile = assigned_assignment['kutsero_profile']
+                        fname = profile.get('kutsero_fname', '')
+                        lname = profile.get('kutsero_lname', '')
+                        if fname or lname:
+                            kutsero_name = f"{fname} {lname}".strip()
+                    
+                    return Response({
+                        "success": False,
+                        "error": f"Horse is already assigned to {kutsero_name}"
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Create new assignment
+            assign_id = str(uuid.uuid4())
+            
+            assignment_payload = {
+                "assign_id": assign_id,
+                "kutsero_id": kutsero_id,
+                "horse_id": horse_id,
+                "date_start": current_time,
+                "date_end": None,
+                "created_at": current_time,
+                "updated_at": current_time
+            }
+            
+            assignment_result = service_client.table("horse_assignment").insert(assignment_payload).execute()
+            
+            if not assignment_result.data:
+                return Response({
+                    "success": False,
+                    "error": "Failed to create horse assignment"
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            updated_assignment = assignment_result.data[0]
         
-        # Step 3: Create new assignment record
-        assignment_id = str(uuid.uuid4())
-        
-        assignment_payload = {
-            "assign_id": assignment_id,
-            "kutsero_id": kutsero_id,
-            "horse_id": horse_id,
-            "date_start": current_time,  # This is the check-in timestamp
-            "date_end": None,  # Will be set when kutsero checks out
-            "created_at": current_time
-        }
-        
-        print(f"🔧 Creating assignment with payload: {assignment_payload}")
-        
-        # Insert the new assignment
-        assignment_result = service_client.table("horse_assignment").insert(assignment_payload).execute()
-        
-        if not assignment_result.data:
-            return Response({
-                "error": "Failed to create horse assignment"
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-        created_assignment = assignment_result.data[0]
-        print(f"✅ Created assignment: {created_assignment}")
-        
-        # Step 4: Fetch horse details for response
+        # Fetch horse details for response
         horse_response = service_client.table("horse_profile").select(
             "horse_id, horse_name, horse_breed, horse_age, horse_color, horse_image, op_id"
         ).eq("horse_id", horse_id).execute()
         
-        horse_data = {"horse_name": "Unknown Horse"}  # Default fallback
+        horse_data = {"horse_name": "Unknown Horse"}
         if horse_response.data:
             horse_data = horse_response.data[0]
         
-        # Step 5: Fetch operator details if available
+        # Fetch operator details if available
         op_name = "Unknown Operator"
         if horse_data.get("op_id"):
             op_response = service_client.table("horse_op_profile").select(
@@ -1138,11 +1167,12 @@ def assign_horse(request):
                 if name_parts:
                     op_name = " ".join(name_parts)
         
-        # Step 6: Build comprehensive response
+        # Build response
         response_data = {
+            "success": True,
             "message": "Horse assigned successfully",
             "assignment": {
-                "assign_id": assignment_id,
+                "assign_id": assign_id,
                 "kutsero_id": kutsero_id,
                 "horse_id": horse_id,
                 "date_start": current_time,
@@ -1162,21 +1192,24 @@ def assign_horse(request):
                 "ownerName": op_name,
                 "operatorName": op_name,
                 "assignmentStatus": "assigned",
-                "currentAssignmentId": assignment_id,
+                "currentAssignmentId": assign_id,
                 "lastCheckup": f"{(datetime.now() - datetime(2024, 5, 25)).days} days ago",
                 "nextCheckup": "June 15, 2025"
             },
-            "previous_assignments_ended": previous_assignments_ended
+            "action": "updated" if has_active_assignment else "created"
         }
         
-        print(f"✅ Assignment successful - returning response: {response_data}")
-        return Response(response_data, status=status.HTTP_201_CREATED)
+        print(f"✅ Assignment successful - {response_data['action']}")
+        return Response(response_data, status=status.HTTP_200_OK if has_active_assignment else status.HTTP_201_CREATED)
         
     except Exception as e:
         print(f"❌ Error in assign_horse: {e}")
         print(f"Full traceback: {traceback.format_exc()}")
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        return Response({
+            "success": False,
+            "error": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
 @api_view(['GET'])
 def get_assignment_history(request):
     """
