@@ -666,79 +666,129 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
     
     console.log("DEBUG: Parsed response data:", data);
     
-    if (response.ok && data.success) {
-      // Store the assignment data for immediate dashboard update
-      const assignmentData = {
-        id: data.assignment?.id || `assign_${Date.now()}`,
-        horse_id: data.assignment?.horse_id || horse.id,
-        horse_name: data.assignment?.horse_name || horse.name,
-        horse_breed: data.assignment?.horse_breed || horse.breed,
-        horse_age: data.assignment?.horse_age || horse.age,
-        horse_color: data.assignment?.horse_color || horse.color,
-        horse_image: data.assignment?.horse_image || horse.image,
-        operator_name: data.assignment?.operator_name || horse.owner_name,
-        date_start: data.assignment?.date_start || new Date().toISOString()
-      };
+    // Check if assignment was successful
+    if (response.ok) {
+      // Success case - assignment completed
+      let assignmentData = {};
       
+      // Handle different response structures
+      if (data.assignment) {
+        // Structure from the log you provided
+        assignmentData = {
+          id: data.assignment.assignmentId || `assign_${Date.now()}`,
+          horse_id: data.assignment.horse?.id || horse.id,
+          horse_name: data.assignment.horse?.name || horse.name,
+          horse_breed: data.assignment.horse?.breed || horse.breed,
+          horse_age: data.assignment.horse?.age || horse.age,
+          horse_color: data.assignment.horse?.color || horse.color,
+          horse_image: data.assignment.horse?.image || horse.image,
+          operator_name: data.assignment.horse?.operatorName || data.assignment.horse?.ownerName || horse.owner_name,
+          date_start: data.assignment.checkedInAt || new Date().toISOString()
+        };
+      } else if (data.assignmentData) {
+        // Alternative structure
+        assignmentData = data.assignmentData;
+      } else {
+        // Fallback structure
+        assignmentData = {
+          id: data.id || `assign_${Date.now()}`,
+          horse_id: horse.id,
+          horse_name: horse.name,
+          horse_breed: horse.breed,
+          horse_age: horse.age,
+          horse_color: horse.color,
+          horse_image: horse.image,
+          operator_name: horse.owner_name,
+          date_start: new Date().toISOString()
+        };
+      }
+      
+      // Store the assignment data
       await SecureStore.setItemAsync("newAssignmentData", JSON.stringify(assignmentData));
       
-      Alert.alert("Success", data.message, [
-        {
+      // Show success message
+      Alert.alert(
+        "Success!", 
+        `Horse "${horse.name}" has been assigned to you successfully.`,
+        [{
           text: "OK",
           onPress: () => {
+            // Navigate back to dashboard
             router.back();
           }
-        }
-      ]);
+        }]
+      );
+      
     } else {
+      // API returned an error status
+      let errorMessage = "Failed to assign horse. Please try again.";
+      
+      // Try to extract error message
+      if (data.error) {
+        errorMessage = data.error;
+      } else if (data.message) {
+        errorMessage = data.message;
+      } else if (data.detail) {
+        errorMessage = data.detail;
+      }
+      
+      // Clean up error message
+      if (typeof errorMessage === 'string') {
+        errorMessage = errorMessage.replace(/['"]+/g, '');
+      }
+      
       // Check if assignment might have succeeded despite the error
-      // Sometimes API returns error but assignment still happens
-      console.log("Assignment API returned error, but let's check if it succeeded anyway");
+      console.log("Assignment API returned error, checking if it succeeded anyway...");
       
-      // Try to load current assignment to see if it worked
-      const checkAssignmentUrl = `${API_BASE_URL}/current_assignment/?kutsero_id=${userData.profile.kutsero_id}`;
-      const checkResponse = await fetch(checkAssignmentUrl, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      });
-      
-      if (checkResponse.ok) {
-        const checkData = await checkResponse.json();
-        console.log("Check assignment response:", checkData);
+      try {
+        const checkAssignmentUrl = `${API_BASE_URL}/current_assignment/?kutsero_id=${userData.profile.kutsero_id}`;
+        const checkResponse = await fetch(checkAssignmentUrl, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        });
         
-        if (checkData.success && checkData.assignment && checkData.assignment.horse) {
-          // Assignment actually succeeded! Store it anyway
-          const horseData = checkData.assignment.horse;
-          const assignmentData = {
-            id: checkData.assignment.assignmentId || `assign_${Date.now()}`,
-            horse_id: horseData.id || horse.id,
-            horse_name: horseData.name || horse.name,
-            horse_breed: horseData.breed || horse.breed,
-            horse_age: horseData.age || horse.age,
-            horse_color: horseData.color || horse.color,
-            horse_image: horseData.image || horse.image,
-            operator_name: horseData.operatorName || horse.owner_name,
-            date_start: checkData.assignment.date_start || new Date().toISOString()
-          };
+        if (checkResponse.ok) {
+          const checkData = await checkResponse.json();
+          console.log("Check assignment response:", checkData);
           
-          await SecureStore.setItemAsync("newAssignmentData", JSON.stringify(assignmentData));
-          
-          Alert.alert("Success", `Horse ${horse.name} has been assigned to you!`, [
-            {
-              text: "OK",
-              onPress: () => {
-                router.back();
-              }
-            }
-          ]);
-          return;
+          if (checkData.success && checkData.assignment && checkData.assignment.horse) {
+            // Assignment actually succeeded! Store it anyway
+            const horseData = checkData.assignment.horse;
+            const assignmentData = {
+              id: checkData.assignment.assignmentId || `assign_${Date.now()}`,
+              horse_id: horseData.id || horse.id,
+              horse_name: horseData.name || horse.name,
+              horse_breed: horseData.breed || horse.breed,
+              horse_age: horseData.age || horse.age,
+              horse_color: horseData.color || horse.color,
+              horse_image: horseData.image || horse.image,
+              operator_name: horseData.operatorName || horseData.ownerName || horse.owner_name,
+              date_start: checkData.assignment.checkedInAt || checkData.assignment.date_start || new Date().toISOString()
+            };
+            
+            await SecureStore.setItemAsync("newAssignmentData", JSON.stringify(assignmentData));
+            
+            Alert.alert(
+              "Success!", 
+              `Horse "${horse.name}" has been assigned to you successfully.`,
+              [{
+                text: "OK",
+                onPress: () => {
+                  router.back();
+                }
+              }]
+            );
+            return;
+          }
         }
+      } catch (checkError) {
+        console.log("Failed to check assignment status:", checkError);
       }
       
       // If we get here, assignment really failed
       Alert.alert(
         "Assignment Failed",
-        data.error || "Failed to assign horse. Please try again.",
+        errorMessage,
         [{ text: "OK" }]
       );
     }
@@ -748,12 +798,15 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
     // Even if there's an error, try to check if assignment succeeded
     if (userData?.profile?.kutsero_id) {
       try {
+        console.log("Network error occurred, checking if assignment succeeded...");
         const checkAssignmentUrl = `${API_BASE_URL}/current_assignment/?kutsero_id=${userData.profile.kutsero_id}`;
         const checkResponse = await fetch(checkAssignmentUrl);
         
         if (checkResponse.ok) {
           const checkData = await checkResponse.json();
-          if (checkData.success && checkData.assignment) {
+          console.log("Check assignment after error:", checkData);
+          
+          if (checkData.success && checkData.assignment && checkData.assignment.horse) {
             // Assignment succeeded despite network error
             const horseData = checkData.assignment.horse;
             const assignmentData = {
@@ -764,20 +817,22 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
               horse_age: horseData.age || horse.age,
               horse_color: horseData.color || horse.color,
               horse_image: horseData.image || horse.image,
-              operator_name: horseData.operatorName || horse.owner_name,
-              date_start: checkData.assignment.date_start || new Date().toISOString()
+              operator_name: horseData.operatorName || horseData.ownerName || horse.owner_name,
+              date_start: checkData.assignment.checkedInAt || checkData.assignment.date_start || new Date().toISOString()
             };
             
             await SecureStore.setItemAsync("newAssignmentData", JSON.stringify(assignmentData));
             
-            Alert.alert("Success", `Horse ${horse.name} has been assigned to you!`, [
-              {
+            Alert.alert(
+              "Success!", 
+              `Horse "${horse.name}" has been assigned to you successfully.`,
+              [{
                 text: "OK",
                 onPress: () => {
                   router.back();
                 }
-              }
-            ]);
+              }]
+            );
             return;
           }
         }
@@ -786,6 +841,7 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
       }
     }
     
+    // Show error message
     Alert.alert(
       "Error", 
       error.message || "Failed to assign horse. Please check your connection and try again."
