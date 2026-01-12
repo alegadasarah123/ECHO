@@ -925,6 +925,7 @@ def unassign_horse(request):
 def current_assignment(request):
     """
     Get current horse assignment for a kutsero (only if checked in and active).
+    Now correctly handles the difference between assigned and checked in.
     """
     kutsero_id = request.GET.get("kutsero_id")
 
@@ -936,28 +937,28 @@ def current_assignment(request):
     try:
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-        # 🔍 Find active assignment (date_end IS NULL)
+        # 🔍 Find active assignment (date_end IS NULL = checked in)
         assignment_response = (
             service_client.table("horse_assignment")
             .select("assign_id, horse_id, date_start, date_end")
             .eq("kutsero_id", kutsero_id)
-            .is_("date_end", "null")  # only active
+            .is_("date_end", "null")  # only checked in (date_end is NULL)
             .order("date_start", desc=True)
             .limit(1)
             .execute()
         )
 
         assignments = assignment_response.data or []
-        print(f"Found {len(assignments)} active assignments for kutsero {kutsero_id}")
+        print(f"Found {len(assignments)} CHECKED-IN assignments for kutsero {kutsero_id}")
 
         if assignments:
             assignment = assignments[0]
-            print(f"Active assignment ID: {assignment['assign_id']}")
+            print(f"Active checked-in assignment ID: {assignment['assign_id']}")
 
             # 🔍 Fetch horse details
             horse_response = (
                 service_client.table("horse_profile")
-                .select("horse_id, horse_name, horse_breed, horse_age, horse_color, horse_image, op_id")
+                .select("horse_id, horse_name, horse_breed, horse_age, horse_color, horse_image, op_id, horse_status")
                 .eq("horse_id", assignment["horse_id"])
                 .execute()
             )
@@ -986,12 +987,25 @@ def current_assignment(request):
                         if name_parts:
                             op_name = " ".join(name_parts)
 
-                # ✅ Successful response
+                # Determine health status from database
+                db_health_status = horse.get('horse_status', '').strip().lower()
+                
+                if db_health_status == 'healthy':
+                    health_status = 'Healthy'
+                elif db_health_status == 'unhealthy':
+                    health_status = 'Unhealthy'
+                elif db_health_status == 'sick':
+                    health_status = 'Sick'
+                else:
+                    health_status = 'Healthy'
+
+                # ✅ Successful response - HORSE IS CHECKED IN
                 return Response({
                     "assignment": {
                         "assignmentId": assignment["assign_id"],
                         "checkedInAt": assignment["date_start"],
-                        "checkedOutAt": assignment["date_end"],  # should still be NULL
+                        "checkedOutAt": assignment["date_end"],  # should be NULL
+                        "isCheckedIn": True,  # Added this flag
                         "horse": {
                             "id": horse["horse_id"],
                             "name": horse.get("horse_name") or "Unnamed Horse",
@@ -999,7 +1013,7 @@ def current_assignment(request):
                             "age": horse.get("horse_age") or 5,
                             "color": horse.get("horse_color") or "Brown",
                             "image": horse.get("horse_image"),
-                            "healthStatus": "Healthy",
+                            "healthStatus": health_status,  # Using actual status from DB
                             "status": "Currently checked in",
                             "opName": op_name,
                             "ownerName": op_name,
@@ -1010,11 +1024,102 @@ def current_assignment(request):
                     }
                 }, status=status.HTTP_200_OK)
 
-        # 🚫 No active assignment
-        print("No active assignment found")
+        # 🚫 No active assignment - check if there's an assigned but not checked in horse
+        print("No active (checked in) assignment found, checking for assigned horse...")
+        
+        # Check for any assignment with this kutsero (including those not checked in)
+        all_assignments_response = (
+            service_client.table("horse_assignment")
+            .select("assign_id, horse_id, date_start, date_end")
+            .eq("kutsero_id", kutsero_id)
+            .order("date_start", desc=True)
+            .limit(1)
+            .execute()
+        )
+        
+        all_assignments = all_assignments_response.data or []
+        
+        if all_assignments:
+            assignment = all_assignments[0]
+            # Check if date_end is NOT null (meaning assigned but not checked in)
+            if assignment.get("date_end") is not None:
+                print(f"Found assigned but not checked in horse: {assignment['assign_id']}")
+                
+                # Fetch horse details for the response
+                horse_response = (
+                    service_client.table("horse_profile")
+                    .select("horse_id, horse_name, horse_breed, horse_age, horse_color, horse_image, op_id, horse_status")
+                    .eq("horse_id", assignment["horse_id"])
+                    .execute()
+                )
+                
+                if horse_response.data:
+                    horse = horse_response.data[0]
+                    
+                    # Fetch operator details
+                    op_name = "Unknown Operator"
+                    if horse.get("op_id"):
+                        op_response = (
+                            service_client.table("horse_op_profile")
+                            .select("op_fname, op_mname, op_lname")
+                            .eq("op_id", horse["op_id"])
+                            .execute()
+                        )
+                        if op_response.data:
+                            op = op_response.data[0]
+                            name_parts = [
+                                part for part in [
+                                    op.get("op_fname"),
+                                    op.get("op_mname"),
+                                    op.get("op_lname")
+                                ] if part
+                            ]
+                            if name_parts:
+                                op_name = " ".join(name_parts)
+                    
+                    # Determine health status
+                    db_health_status = horse.get('horse_status', '').strip().lower()
+                    
+                    if db_health_status == 'healthy':
+                        health_status = 'Healthy'
+                    elif db_health_status == 'unhealthy':
+                        health_status = 'Unhealthy'
+                    elif db_health_status == 'sick':
+                        health_status = 'Sick'
+                    else:
+                        health_status = 'Healthy'
+                    
+                    # Horse is assigned but NOT checked in
+                    return Response({
+                        "assignment": {
+                            "assignmentId": assignment["assign_id"],
+                            "assignedAt": assignment["date_start"],
+                            "isCheckedIn": False,  # This is the key difference
+                            "horse": {
+                                "id": horse["horse_id"],
+                                "name": horse.get("horse_name") or "Unnamed Horse",
+                                "breed": horse.get("horse_breed") or "Mixed Breed",
+                                "age": horse.get("horse_age") or 5,
+                                "color": horse.get("horse_color") or "Brown",
+                                "image": horse.get("horse_image"),
+                                "healthStatus": health_status,
+                                "status": "Assigned (not checked in)",
+                                "opName": op_name,
+                                "ownerName": op_name,
+                                "operatorName": op_name,
+                                "lastCheckup": f"{(datetime.now() - datetime(2024, 5, 25)).days} days ago",
+                                "nextCheckup": "June 15, 2025"
+                            }
+                        },
+                        "requires_checkin": True,
+                        "message": "You have an assigned horse. Click 'Check In' to start working."
+                    }, status=status.HTTP_200_OK)
+
+        # 🚫 No assignment at all
+        print("No assignment found at all")
         return Response({
             "assignment": None,
-            "message": "No active horse assignment found"
+            "message": "No horse assignment found"
         }, status=status.HTTP_200_OK)
 
     except Exception as e:
@@ -1024,7 +1129,6 @@ def current_assignment(request):
             "error": "Failed to fetch current assignment",
             "details": str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 @api_view(['POST'])
 def assign_horse(request):
