@@ -5347,7 +5347,7 @@ def get_horse_owners(request):
 @api_view(['POST'])
 def apply_to_owner(request):
     """
-    Apply to a horse owner for horse usage - SIMPLIFIED VERSION
+    Apply to a horse owner for horse usage - FIXED VERSION
     """
     try:
         data = request.data
@@ -5357,6 +5357,8 @@ def apply_to_owner(request):
         print(f"🔄 apply_to_owner called with:")
         print(f"  kutsero_id: {kutsero_id}")
         print(f"  op_id: {op_id}")
+        print(f"  kutsero_id type: {type(kutsero_id)}")
+        print(f"  op_id type: {type(op_id)}")
         
         if not kutsero_id or not op_id:
             return Response({
@@ -5364,16 +5366,26 @@ def apply_to_owner(request):
                 'error': 'kutsero_id and op_id are required'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Validate UUIDs
-        try:
-            kutsero_uuid = uuid.UUID(str(kutsero_id).strip())
-            op_uuid = uuid.UUID(str(op_id).strip())
-            print(f"✅ UUIDs validated")
-        except ValueError as e:
-            print(f"❌ Invalid UUID: {e}")
+        # Clean and validate the IDs
+        kutsero_id = str(kutsero_id).strip()
+        op_id = str(op_id).strip()
+        
+        # Validate they look like UUIDs
+        import re
+        uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+        
+        if not uuid_pattern.match(kutsero_id):
+            print(f"❌ Invalid kutsero_id format: {kutsero_id}")
             return Response({
                 'success': False,
-                'error': f'Invalid UUID format: {str(e)}'
+                'error': f'Invalid kutsero_id format: {kutsero_id}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        if not uuid_pattern.match(op_id):
+            print(f"❌ Invalid op_id format: {op_id}")
+            return Response({
+                'success': False,
+                'error': f'Invalid op_id format: {op_id}'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
@@ -5382,7 +5394,7 @@ def apply_to_owner(request):
         print(f"🔍 Checking owner: {op_id}")
         owner_response = service_client.table("horse_op_profile").select(
             "op_id, op_fname, op_lname, op_email"
-        ).eq("op_id", str(op_id)).execute()
+        ).eq("op_id", op_id).execute()
         
         if not owner_response.data:
             print(f"❌ Owner not found")
@@ -5398,7 +5410,7 @@ def apply_to_owner(request):
         print(f"🔍 Checking kutsero: {kutsero_id}")
         kutsero_response = service_client.table("kutsero_profile").select(
             "kutsero_id, kutsero_fname, kutsero_lname, kutsero_email"
-        ).eq("kutsero_id", str(kutsero_id)).execute()
+        ).eq("kutsero_id", kutsero_id).execute()
         
         if not kutsero_response.data:
             print(f"❌ Kutsero not found")
@@ -5414,7 +5426,7 @@ def apply_to_owner(request):
         print(f"🔍 Checking existing applications...")
         existing_app_response = service_client.table("op_kutsero_application").select(
             "*"
-        ).eq("op_id", str(op_id)).eq("kutsero_id", str(kutsero_id)).execute()
+        ).eq("op_id", op_id).eq("kutsero_id", kutsero_id).execute()
         
         if existing_app_response.data:
             existing_app = existing_app_response.data[0]
@@ -5437,18 +5449,18 @@ def apply_to_owner(request):
                 ).execute()
                 print(f"✅ Rejected application deleted")
         
-        # 4. CREATE APPLICATION - SIMPLE DIRECT APPROACH
+        # 4. CREATE APPLICATION - Using UUIDs directly
         print(f"🔄 Creating new application...")
         
-        # Prepare application data
+        # Prepare application data - ensure UUIDs are strings
         application_id = str(uuid.uuid4())
         current_time = datetime.now().isoformat()
         current_date = datetime.now().date().isoformat()
         
         application_data = {
             'application_id': application_id,
-            'op_id': str(op_id),  # Ensure it's a string
-            'kutsero_id': str(kutsero_id),  # Ensure it's a string
+            'op_id': op_id,  # Already validated as UUID string
+            'kutsero_id': kutsero_id,  # Already validated as UUID string
             'application_date': current_date,
             'status': 'pending',
             'created_at': current_time,
@@ -5457,10 +5469,10 @@ def apply_to_owner(request):
         
         print(f"📦 Application data to insert:")
         print(f"  application_id: {application_id}")
-        print(f"  op_id: {str(op_id)} (type: {type(str(op_id))})")
-        print(f"  kutsero_id: {str(kutsero_id)} (type: {type(str(kutsero_id))})")
+        print(f"  op_id: {op_id}")
+        print(f"  kutsero_id: {kutsero_id}")
         
-        # Try Method 1: Direct supabase client insert
+        # Method 1: Try direct supabase client insert
         try:
             print("🔧 Trying Method 1: Direct supabase insert...")
             insert_response = service_client.table("op_kutsero_application").insert(application_data).execute()
@@ -5474,20 +5486,9 @@ def apply_to_owner(request):
         except Exception as e1:
             print(f"❌ Method 1 failed: {str(e1)}")
             
-            # Try Method 2: REST API with different date format
+            # Try Method 2: REST API
             try:
                 print("🔧 Trying Method 2: REST API...")
-                
-                # Format dates differently for REST API
-                rest_data = {
-                    'application_id': application_id,
-                    'op_id': str(op_id),
-                    'kutsero_id': str(kutsero_id),
-                    'application_date': current_date,  # Already in YYYY-MM-DD format
-                    'status': 'pending',
-                    'created_at': current_time,
-                    'updated_at': current_time
-                }
                 
                 insert_url = f"{SUPABASE_URL}/rest/v1/op_kutsero_application"
                 headers = {
@@ -5498,54 +5499,74 @@ def apply_to_owner(request):
                 }
                 
                 print(f"🌐 Calling REST API...")
-                response = requests.post(insert_url, json=rest_data, headers=headers)
+                response = requests.post(insert_url, json=application_data, headers=headers)
                 
                 print(f"📡 Response status: {response.status_code}")
+                print(f"📡 Response text: {response.text}")
                 
                 if response.status_code in [200, 201]:
                     result = response.json()
                     new_application = result[0] if isinstance(result, list) else result
                     print(f"✅ Method 2 SUCCESS!")
                 else:
+                    # Try to parse the error
                     error_text = response.text
                     print(f"❌ REST API error: {error_text}")
                     
-                    # Parse the error to understand what's wrong
-                    if "integer" in error_text and "uuid" in error_text.lower():
-                        # The database still thinks it's expecting integers
-                        # Let's try one more approach with explicit type casting
-                        print("🔄 Database expects integers, trying workaround...")
-                        
-                        # This is a WORKAROUND - you should fix your database schema
-                        # Convert UUID to integer hash
-                        workaround_data = {
-                            'application_id': application_id,
-                            'op_id': abs(hash(str(op_id))) % (10**9),  # Convert to integer
-                            'kutsero_id': abs(hash(str(kutsero_id))) % (10**9),  # Convert to integer
-                            'application_date': current_date,
-                            'status': 'pending',
-                            'created_at': current_time,
-                            'updated_at': current_time
+                    # If it's a "column does not exist" error, check the actual column names
+                    if "column" in error_text.lower() and "does not exist" in error_text.lower():
+                        # Let's check the actual table schema
+                        print("🔄 Checking table schema...")
+                        schema_url = f"{SUPABASE_URL}/rest/v1/op_kutsero_application"
+                        schema_headers = {
+                            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
                         }
+                        schema_response = requests.get(schema_url + "?limit=1", headers=schema_headers)
+                        if schema_response.status_code == 200:
+                            sample_data = schema_response.json()
+                            if sample_data and len(sample_data) > 0:
+                                print(f"📋 Actual table columns: {list(sample_data[0].keys())}")
+                                
+                                # Check what columns exist and create adjusted data
+                                adjusted_data = {}
+                                for key, value in application_data.items():
+                                    if key in sample_data[0]:
+                                        adjusted_data[key] = value
+                                    else:
+                                        # Try alternative column names
+                                        if key == "application_id":
+                                            alt_key = "id"
+                                        elif key == "op_id":
+                                            alt_key = "operator_id"
+                                        elif key == "kutsero_id":
+                                            alt_key = "kutsero_user_id"
+                                        else:
+                                            alt_key = key
+                                        
+                                        if alt_key in sample_data[0]:
+                                            adjusted_data[alt_key] = value
+                                            print(f"  Using {alt_key} instead of {key}")
+                                
+                                if adjusted_data:
+                                    print(f"📦 Adjusted data: {adjusted_data}")
+                                    retry_response = requests.post(insert_url, json=adjusted_data, headers=headers)
+                                    if retry_response.status_code in [200, 201]:
+                                        result = retry_response.json()
+                                        new_application = result[0] if isinstance(result, list) else result
+                                        print(f"✅ Adjusted insert SUCCESS!")
+                                    else:
+                                        raise Exception(f"Adjusted insert failed: {retry_response.text}")
+                                else:
+                                    raise Exception(f"No matching columns found. Available columns: {list(sample_data[0].keys())}")
                         
-                        print(f"📦 Workaround data: {workaround_data}")
-                        
-                        workaround_response = requests.post(insert_url, json=workaround_data, headers=headers)
-                        
-                        if workaround_response.status_code in [200, 201]:
-                            result = workaround_response.json()
-                            new_application = result[0] if isinstance(result, list) else result
-                            print(f"✅ Workaround SUCCESS!")
-                        else:
-                            raise Exception(f"Workaround failed: {workaround_response.text}")
-                    else:
-                        raise Exception(f"REST API error: {error_text}")
-                        
+                    raise Exception(f"REST API error: {error_text}")
+                    
             except Exception as e2:
                 print(f"❌ All methods failed: {str(e2)}")
                 return Response({
                     'success': False,
-                    'error': f'Failed to create application. Please contact support. Error: {str(e2)}'
+                    'error': f'Failed to create application: {str(e2)}'
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         # 5. SUCCESS RESPONSE
@@ -5578,7 +5599,7 @@ def apply_to_owner(request):
             'success': False,
             'error': f'Application failed: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+    
 @api_view(['GET'])
 def get_my_applications(request):
     """
