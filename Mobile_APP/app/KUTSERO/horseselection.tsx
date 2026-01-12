@@ -590,25 +590,93 @@ const proceedWithApplication = async (owner: HorseOwner) => {
 }
 
 
-  const handleSelectHorse = (horse: AvailableHorse) => {
-    if (!userData || !userData.profile?.kutsero_id) {
-      Alert.alert("Error", "User information not available")
-      return
-    }
+// Update the handleSelectHorse function to check current assignment first
+const handleSelectHorse = async (horse: AvailableHorse) => {
+  if (!userData || !userData.profile?.kutsero_id) {
+    Alert.alert("Error", "User information not available");
+    return;
+  }
 
-    if (!horse.can_select) {
-      Alert.alert("Horse Unavailable", "This horse is already assigned to you or another kutsero.")
-      return
-    }
+  if (horse.is_assigned_to_me) {
+    Alert.alert(
+      "Already Assigned", 
+      `Horse "${horse.name}" is already assigned to you.`
+    );
+    return;
+  }
 
-    if (!horse.owner_approved) {
-      Alert.alert("Owner Not Approved", "You need to be approved by this horse's owner first.")
-      return
-    }
+  if (!horse.can_select) {
+    Alert.alert("Horse Unavailable", "This horse is already assigned to another kutsero.");
+    return;
+  }
 
+  if (!horse.owner_approved) {
+    Alert.alert("Owner Not Approved", "You need to be approved by this horse's owner first.");
+    return;
+  }
+
+  // First check current assignment
+  try {
+    console.log("DEBUG: Checking current assignment before selecting new horse...");
+    const currentAssignmentUrl = `${API_BASE_URL}/current_assignment/?kutsero_id=${userData.profile.kutsero_id}`;
+    const currentAssignmentResponse = await fetch(currentAssignmentUrl);
+    
+    let hasCurrentAssignment = false;
+    let currentHorseName = "";
+    
+    if (currentAssignmentResponse.ok) {
+      const currentAssignmentData = await currentAssignmentResponse.json();
+      console.log("DEBUG: Current assignment check response:", currentAssignmentData);
+      
+      if (currentAssignmentData.success && currentAssignmentData.assignment && currentAssignmentData.assignment.horse) {
+        hasCurrentAssignment = true;
+        currentHorseName = currentAssignmentData.assignment.horse.name;
+        
+        // Check if user is trying to select the same horse they already have
+        if (currentAssignmentData.assignment.horse.id === horse.id) {
+          Alert.alert(
+            "Already Assigned", 
+            `Horse "${horse.name}" is already assigned to you.`
+          );
+          return;
+        }
+      }
+    }
+    
+    if (hasCurrentAssignment) {
+      // User has a current assignment, ask if they want to switch
+      Alert.alert(
+        "Switch Horse?",
+        `You are currently assigned to "${currentHorseName}". Do you want to check out from "${currentHorseName}" and assign "${horse.name}" instead?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { 
+            text: "Switch Horses", 
+            onPress: () => switchToNewHorse(horse) 
+          }
+        ]
+      );
+    } else {
+      // No current assignment, proceed normally
+      Alert.alert(
+        "Assign Horse",
+        `Do you want to assign "${horse.name}" to yourself for work?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { 
+            text: "Assign", 
+            onPress: () => assignHorseToKutsero(horse) 
+          }
+        ]
+      );
+    }
+    
+  } catch (error) {
+    console.error("Error checking current assignment:", error);
+    // If we can't check current assignment, proceed with assignment anyway
     Alert.alert(
       "Assign Horse",
-      `Do you want to assign ${horse.name} to yourself for work?`,
+      `Do you want to assign "${horse.name}" to yourself for work?`,
       [
         { text: "Cancel", style: "cancel" },
         { 
@@ -616,8 +684,258 @@ const proceedWithApplication = async (owner: HorseOwner) => {
           onPress: () => assignHorseToKutsero(horse) 
         }
       ]
-    )
+    );
   }
+};
+
+// Add a new function to handle horse switching
+const switchToNewHorse = async (newHorse: AvailableHorse) => {
+  if (!userData || !userData.profile?.kutsero_id) {
+    Alert.alert("Error", "User information not available");
+    return;
+  }
+
+  setIsAssigning(true);
+  
+  try {
+    console.log("DEBUG: Switching to new horse:", newHorse.name);
+    
+    // First, check current assignment to get the assignment ID
+    const currentAssignmentUrl = `${API_BASE_URL}/current_assignment/?kutsero_id=${userData.profile.kutsero_id}`;
+    const currentAssignmentResponse = await fetch(currentAssignmentUrl);
+    
+    if (!currentAssignmentResponse.ok) {
+      throw new Error("Failed to get current assignment");
+    }
+    
+    const currentAssignmentData = await currentAssignmentResponse.json();
+    
+    if (!currentAssignmentData.success || !currentAssignmentData.assignment) {
+      throw new Error("No current assignment found");
+    }
+    
+    const currentAssignment = currentAssignmentData.assignment;
+    console.log("DEBUG: Current assignment found:", currentAssignment);
+    
+    // Step 1: Check out from current horse (if needed)
+    // But first, let's try to assign the new horse with force_switch=true
+    console.log("DEBUG: Attempting to assign new horse with force_switch...");
+    
+    const assignUrl = `${API_BASE_URL}/assign_horse/`;
+    const assignPayload = {
+      horse_id: newHorse.id,
+      op_id: newHorse.owner_id,
+      kutsero_id: userData.profile.kutsero_id,
+      date_start: new Date().toISOString(),
+      force_switch: true  // This should tell the backend to handle the switch
+    };
+    
+    console.log("DEBUG: Assignment payload with force_switch:", assignPayload);
+    
+    const assignResponse = await fetch(assignUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(assignPayload)
+    });
+    
+    const assignText = await assignResponse.text();
+    console.log("DEBUG: Assignment response:", assignText);
+    
+    let assignData;
+    try {
+      assignData = JSON.parse(assignText);
+    } catch (parseError) {
+      console.log("DEBUG: Failed to parse assignment response");
+      throw new Error(`Invalid response from server: ${assignText.substring(0, 100)}`);
+    }
+    
+    if (assignResponse.ok) {
+      // Assignment successful
+      let assignmentData = {};
+      
+      if (assignData.assignment) {
+        assignmentData = {
+          id: assignData.assignment.assignmentId || `assign_${Date.now()}`,
+          horse_id: assignData.assignment.horse?.id || newHorse.id,
+          horse_name: assignData.assignment.horse?.name || newHorse.name,
+          horse_breed: assignData.assignment.horse?.breed || newHorse.breed,
+          horse_age: assignData.assignment.horse?.age || newHorse.age,
+          horse_color: assignData.assignment.horse?.color || newHorse.color,
+          horse_image: assignData.assignment.horse?.image || newHorse.image,
+          operator_name: assignData.assignment.horse?.operatorName || assignData.assignment.horse?.ownerName || newHorse.owner_name,
+          date_start: assignData.assignment.checkedInAt || new Date().toISOString()
+        };
+      } else if (assignData.assignmentData) {
+        assignmentData = assignData.assignmentData;
+      } else {
+        assignmentData = {
+          id: assignData.id || `assign_${Date.now()}`,
+          horse_id: newHorse.id,
+          horse_name: newHorse.name,
+          horse_breed: newHorse.breed,
+          horse_age: newHorse.age,
+          horse_color: newHorse.color,
+          horse_image: newHorse.image,
+          operator_name: newHorse.owner_name,
+          date_start: new Date().toISOString()
+        };
+      }
+      
+      await SecureStore.setItemAsync("newAssignmentData", JSON.stringify(assignmentData));
+      
+      Alert.alert(
+        "Success!", 
+        `Successfully switched to "${newHorse.name}"!`,
+        [{
+          text: "OK",
+          onPress: () => {
+            router.back();
+          }
+        }]
+      );
+      
+    } else {
+      // Assignment failed, check if it's the duplicate key error
+      if (assignData.error && assignData.error.includes('duplicate key')) {
+        console.log("DEBUG: Got duplicate key error, trying manual checkout and assign...");
+        
+        // Try manual checkout first
+        try {
+          const checkoutUrl = `${API_BASE_URL}/checkout_horse/`;
+          const checkoutPayload = {
+            assignment_id: currentAssignment.assignmentId,
+            horse_id: currentAssignment.horse.id,
+            kutsero_id: userData.profile.kutsero_id,
+            date_end: new Date().toISOString()
+          };
+          
+          console.log("DEBUG: Attempting manual checkout:", checkoutPayload);
+          const checkoutResponse = await fetch(checkoutUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(checkoutPayload)
+          });
+          
+          const checkoutText = await checkoutResponse.text();
+          console.log("DEBUG: Checkout response:", checkoutText);
+          
+          // Now try to assign the new horse again
+          console.log("DEBUG: Attempting to assign new horse after checkout...");
+          const retryAssignResponse = await fetch(assignUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              horse_id: newHorse.id,
+              op_id: newHorse.owner_id,
+              kutsero_id: userData.profile.kutsero_id,
+              date_start: new Date().toISOString()
+            })
+          });
+          
+          const retryAssignText = await retryAssignResponse.text();
+          console.log("DEBUG: Retry assignment response:", retryAssignText);
+          
+          let retryAssignData;
+          try {
+            retryAssignData = JSON.parse(retryAssignText);
+          } catch (parseError) {
+            console.log("DEBUG: Failed to parse retry assignment response");
+            throw new Error(`Invalid response from server: ${retryAssignText.substring(0, 100)}`);
+          }
+          
+          if (retryAssignResponse.ok) {
+            // Success!
+            let assignmentData = {};
+            
+            if (retryAssignData.assignment) {
+              assignmentData = {
+                id: retryAssignData.assignment.assignmentId || `assign_${Date.now()}`,
+                horse_id: retryAssignData.assignment.horse?.id || newHorse.id,
+                horse_name: retryAssignData.assignment.horse?.name || newHorse.name,
+                horse_breed: retryAssignData.assignment.horse?.breed || newHorse.breed,
+                horse_age: retryAssignData.assignment.horse?.age || newHorse.age,
+                horse_color: retryAssignData.assignment.horse?.color || newHorse.color,
+                horse_image: retryAssignData.assignment.horse?.image || newHorse.image,
+                operator_name: retryAssignData.assignment.horse?.operatorName || retryAssignData.assignment.horse?.ownerName || newHorse.owner_name,
+                date_start: retryAssignData.assignment.checkedInAt || new Date().toISOString()
+              };
+            } else {
+              assignmentData = {
+                id: retryAssignData.id || `assign_${Date.now()}`,
+                horse_id: newHorse.id,
+                horse_name: newHorse.name,
+                horse_breed: newHorse.breed,
+                horse_age: newHorse.age,
+                horse_color: newHorse.color,
+                horse_image: newHorse.image,
+                operator_name: newHorse.owner_name,
+                date_start: new Date().toISOString()
+              };
+            }
+            
+            await SecureStore.setItemAsync("newAssignmentData", JSON.stringify(assignmentData));
+            
+            Alert.alert(
+              "Success!", 
+              `Successfully switched to "${newHorse.name}"!`,
+              [{
+                text: "OK",
+                onPress: () => {
+                  router.back();
+                }
+              }]
+            );
+            return;
+          } else {
+            // Retry also failed
+            throw new Error(retryAssignData.error || "Failed to assign horse after checkout");
+          }
+          
+        } catch (manualError) {
+          console.error("Manual checkout/assign error:", manualError);
+          throw manualError;
+        }
+      }
+      
+      // If we get here, assignment failed with other error
+      let errorMessage = "Failed to switch horses. Please try again.";
+      if (assignData.error) {
+        errorMessage = assignData.error;
+        // Clean up error message
+        if (typeof errorMessage === 'string') {
+          try {
+            const cleaned = errorMessage.replace(/'/g, '"').replace(/None/g, 'null');
+            const parsed = JSON.parse(cleaned);
+            errorMessage = parsed.message || errorMessage;
+          } catch (e) {
+            // If parsing fails, extract message manually
+            const match = errorMessage.match(/message['"]?: ['"]([^'"]+)['"]/);
+            if (match && match[1]) {
+              errorMessage = match[1];
+            }
+          }
+        }
+      }
+      
+      Alert.alert("Switch Failed", errorMessage);
+    }
+    
+  } catch (error: any) {
+    console.error("Error switching horses:", error);
+    Alert.alert(
+      "Error", 
+      error.message || "Failed to switch horses. Please try again."
+    );
+  } finally {
+    setIsAssigning(false);
+  }
+};
 
 const assignHorseToKutsero = async (horse: AvailableHorse) => {
   if (!userData || !userData.profile?.kutsero_id) {
@@ -626,6 +944,7 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
   }
   
   setIsAssigning(true);
+  
   try {
     console.log("DEBUG: Assigning horse", {
       horse_id: horse.id,
@@ -666,28 +985,24 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
     
     console.log("DEBUG: Parsed response data:", data);
     
-    // Check if assignment was successful
-    if (response.ok) {
-      // Success case - assignment completed
+    // Handle the response
+    if (response.ok && data.success) {
+      // Success - horse assigned
       let assignmentData = {};
       
-      // Handle different response structures
       if (data.assignment) {
-        // Structure from the log you provided
         assignmentData = {
-          id: data.assignment.assignmentId || `assign_${Date.now()}`,
-          horse_id: data.assignment.horse?.id || horse.id,
-          horse_name: data.assignment.horse?.name || horse.name,
-          horse_breed: data.assignment.horse?.breed || horse.breed,
-          horse_age: data.assignment.horse?.age || horse.age,
-          horse_color: data.assignment.horse?.color || horse.color,
-          horse_image: data.assignment.horse?.image || horse.image,
-          operator_name: data.assignment.horse?.operatorName || data.assignment.horse?.ownerName || horse.owner_name,
-          date_start: data.assignment.checkedInAt || new Date().toISOString()
+          id: data.assignment.assign_id || `assign_${Date.now()}`,
+          horse_id: data.horse?.id || horse.id,
+          horse_name: data.horse?.name || horse.name,
+          horse_breed: data.horse?.breed || horse.breed,
+          horse_age: data.horse?.age || horse.age,
+          horse_color: data.horse?.color || horse.color,
+          horse_image: data.horse?.image || horse.image,
+          operator_name: data.horse?.operatorName || data.horse?.ownerName || horse.owner_name,
+          date_start: data.assignment.date_start || new Date().toISOString(),
+          action: data.action || "assigned"
         };
-      } else if (data.assignmentData) {
-        // Alternative structure
-        assignmentData = data.assignmentData;
       } else {
         // Fallback structure
         assignmentData = {
@@ -699,17 +1014,23 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
           horse_color: horse.color,
           horse_image: horse.image,
           operator_name: horse.owner_name,
-          date_start: new Date().toISOString()
+          date_start: new Date().toISOString(),
+          action: "assigned"
         };
       }
       
       // Store the assignment data
       await SecureStore.setItemAsync("newAssignmentData", JSON.stringify(assignmentData));
       
-      // Show success message
+      // Show appropriate success message
+      let successMessage = `Horse "${horse.name}" has been assigned to you successfully.`;
+      if (data.action === "updated") {
+        successMessage = `Horse changed to "${horse.name}" successfully.`;
+      }
+      
       Alert.alert(
         "Success!", 
-        `Horse "${horse.name}" has been assigned to you successfully.`,
+        successMessage,
         [{
           text: "OK",
           onPress: () => {
@@ -720,72 +1041,13 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
       );
       
     } else {
-      // API returned an error status
-      let errorMessage = "Failed to assign horse. Please try again.";
+      // Handle error
+      let errorMessage = data.error || data.message || "Failed to assign horse. Please try again.";
       
-      // Try to extract error message
-      if (data.error) {
-        errorMessage = data.error;
-      } else if (data.message) {
-        errorMessage = data.message;
-      } else if (data.detail) {
-        errorMessage = data.detail;
-      }
-      
-      // Clean up error message
       if (typeof errorMessage === 'string') {
         errorMessage = errorMessage.replace(/['"]+/g, '');
       }
       
-      // Check if assignment might have succeeded despite the error
-      console.log("Assignment API returned error, checking if it succeeded anyway...");
-      
-      try {
-        const checkAssignmentUrl = `${API_BASE_URL}/current_assignment/?kutsero_id=${userData.profile.kutsero_id}`;
-        const checkResponse = await fetch(checkAssignmentUrl, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        });
-        
-        if (checkResponse.ok) {
-          const checkData = await checkResponse.json();
-          console.log("Check assignment response:", checkData);
-          
-          if (checkData.success && checkData.assignment && checkData.assignment.horse) {
-            // Assignment actually succeeded! Store it anyway
-            const horseData = checkData.assignment.horse;
-            const assignmentData = {
-              id: checkData.assignment.assignmentId || `assign_${Date.now()}`,
-              horse_id: horseData.id || horse.id,
-              horse_name: horseData.name || horse.name,
-              horse_breed: horseData.breed || horse.breed,
-              horse_age: horseData.age || horse.age,
-              horse_color: horseData.color || horse.color,
-              horse_image: horseData.image || horse.image,
-              operator_name: horseData.operatorName || horseData.ownerName || horse.owner_name,
-              date_start: checkData.assignment.checkedInAt || checkData.assignment.date_start || new Date().toISOString()
-            };
-            
-            await SecureStore.setItemAsync("newAssignmentData", JSON.stringify(assignmentData));
-            
-            Alert.alert(
-              "Success!", 
-              `Horse "${horse.name}" has been assigned to you successfully.`,
-              [{
-                text: "OK",
-                onPress: () => {
-                  router.back();
-                }
-              }]
-            );
-            return;
-          }
-        }
-      } catch (checkError) {
-        console.log("Failed to check assignment status:", checkError);
-      }
-      
-      // If we get here, assignment really failed
       Alert.alert(
         "Assignment Failed",
         errorMessage,
@@ -795,53 +1057,6 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
   } catch (error: any) {
     console.error("Error assigning horse:", error);
     
-    // Even if there's an error, try to check if assignment succeeded
-    if (userData?.profile?.kutsero_id) {
-      try {
-        console.log("Network error occurred, checking if assignment succeeded...");
-        const checkAssignmentUrl = `${API_BASE_URL}/current_assignment/?kutsero_id=${userData.profile.kutsero_id}`;
-        const checkResponse = await fetch(checkAssignmentUrl);
-        
-        if (checkResponse.ok) {
-          const checkData = await checkResponse.json();
-          console.log("Check assignment after error:", checkData);
-          
-          if (checkData.success && checkData.assignment && checkData.assignment.horse) {
-            // Assignment succeeded despite network error
-            const horseData = checkData.assignment.horse;
-            const assignmentData = {
-              id: checkData.assignment.assignmentId || `assign_${Date.now()}`,
-              horse_id: horseData.id || horse.id,
-              horse_name: horseData.name || horse.name,
-              horse_breed: horseData.breed || horse.breed,
-              horse_age: horseData.age || horse.age,
-              horse_color: horseData.color || horse.color,
-              horse_image: horseData.image || horse.image,
-              operator_name: horseData.operatorName || horseData.ownerName || horse.owner_name,
-              date_start: checkData.assignment.checkedInAt || checkData.assignment.date_start || new Date().toISOString()
-            };
-            
-            await SecureStore.setItemAsync("newAssignmentData", JSON.stringify(assignmentData));
-            
-            Alert.alert(
-              "Success!", 
-              `Horse "${horse.name}" has been assigned to you successfully.`,
-              [{
-                text: "OK",
-                onPress: () => {
-                  router.back();
-                }
-              }]
-            );
-            return;
-          }
-        }
-      } catch (checkError) {
-        console.log("Failed to check assignment status:", checkError);
-      }
-    }
-    
-    // Show error message
     Alert.alert(
       "Error", 
       error.message || "Failed to assign horse. Please check your connection and try again."

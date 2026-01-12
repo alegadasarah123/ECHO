@@ -50,7 +50,7 @@ export default function LoadingScreen() {
       const userData = await SecureStore.getItemAsync("user_data")
 
       // Wait for initial animation to complete
-      await new Promise(resolve => setTimeout(resolve, 1500))
+      await new Promise(resolve => setTimeout(resolve, 3000))
 
       // Calculate the distance to move the logo up
       const centerY = height / 2
