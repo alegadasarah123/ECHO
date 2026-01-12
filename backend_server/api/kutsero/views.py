@@ -1032,6 +1032,9 @@ def assign_horse(request):
     Assign a horse to a kutsero (creates or updates assignment record)
     If kutsero already has an assignment but NOT checked in, DELETE the old assignment and CREATE a new one
     If kutsero has a checked-in horse, require checkout first
+    
+    IMPORTANT: This function only ASSIGNS the horse, it does NOT check in the kutsero.
+    The kutsero must click "Check In" button separately to start working with the horse.
     """
     kutsero_id = request.data.get("kutsero_id")
     horse_id = request.data.get("horse_id")
@@ -1174,17 +1177,19 @@ def assign_horse(request):
                     "error": f"Horse is currently checked in by {kutsero_name}"
                 }, status=status.HTTP_400_BAD_REQUEST)
         
-        # 🎯 CREATE NEW ASSIGNMENT
-        print(f"🔧 Creating new assignment for horse {horse_id}")
+        # 🎯 CREATE NEW ASSIGNMENT - BUT DO NOT CHECK IN
+        print(f"🔧 Creating new assignment for horse {horse_id} (NOT checked in)")
         
         assign_id = str(uuid.uuid4())
         
+        # IMPORTANT: We set date_end to current_time to indicate the horse is assigned but NOT checked in
+        # When the kutsero clicks "Check In", we'll update date_end to null
         assignment_payload = {
             "assign_id": assign_id,
             "kutsero_id": kutsero_id,
             "horse_id": horse_id,
             "date_start": current_time,
-            "date_end": None,
+            "date_end": current_time,  # Set to current_time = NOT checked in yet
             "created_at": current_time,
             "updated_at": current_time
         }
@@ -1230,16 +1235,16 @@ def assign_horse(request):
         # Build response
         response_data = {
             "success": True,
-            "message": "Horse assigned successfully",
+            "message": "Horse assigned successfully. Click 'Check In' to start working with the horse.",
             "action": "switched" if has_any_assignment and not has_checked_in_horse else "assigned",
             "assignment": {
                 "assign_id": assign_id,
                 "kutsero_id": kutsero_id,
                 "horse_id": horse_id,
                 "date_start": current_time,
-                "date_end": None,
+                "date_end": current_time,  # This is NOT null, meaning not checked in yet
                 "is_checked_in": False,  # New assignment is not checked in yet
-                "status": "assigned"
+                "status": "assigned_not_checked_in"
             },
             "horse": {
                 "id": horse_id,
@@ -1258,10 +1263,11 @@ def assign_horse(request):
                 "lastCheckup": f"{(datetime.now() - datetime(2024, 5, 25)).days} days ago",
                 "nextCheckup": "June 15, 2025"
             },
-            "requires_checkin": True  # Frontend should prompt user to check in
+            "requires_checkin": True,  # Frontend should prompt user to check in
+            "instructions": "Please click the 'Check In' button to start working with this horse."
         }
         
-        print(f"✅ Assignment successful - {response_data['action']}")
+        print(f"✅ Assignment successful - {response_data['action']} (horse assigned but NOT checked in)")
         return Response(response_data, status=status.HTTP_200_OK)
         
     except Exception as e:
@@ -1271,7 +1277,7 @@ def assign_horse(request):
             "success": False,
             "error": str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
+            
 @api_view(['GET'])
 def get_assignment_history(request):
     """
