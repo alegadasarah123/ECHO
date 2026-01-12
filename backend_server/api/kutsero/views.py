@@ -5139,6 +5139,7 @@ def get_horse_owners(request):
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+# In your apply_to_owner function, modify the database queries
 @api_view(['POST'])
 def apply_to_owner(request):
     """
@@ -5157,7 +5158,7 @@ def apply_to_owner(request):
         
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
-        # Check if owner exists
+        # Check if owner exists - FIX: Use correct column type
         owner_response = service_client.table("horse_op_profile").select("*").eq("op_id", op_id).execute()
         
         if not owner_response.data:
@@ -5189,15 +5190,29 @@ def apply_to_owner(request):
         # Create new application
         application_data = {
             'application_id': str(uuid.uuid4()),
-            'op_id': op_id,
-            'kutsero_id': kutsero_id,
+            'op_id': op_id,  # This should match your database column type
+            'kutsero_id': kutsero_id,  # This should match your database column type
             'application_date': datetime.now().isoformat(),
             'status': 'pending',
             'created_at': datetime.now().isoformat(),
             'updated_at': datetime.now().isoformat()
         }
         
-        application_response = service_client.table("op_kutsero_application").insert(application_data).execute()
+        # IMPORTANT: Debug the data being sent
+        print(f"DEBUG: Application data to insert: {application_data}")
+        print(f"DEBUG: kutsero_id type: {type(kutsero_id)}, value: {kutsero_id}")
+        print(f"DEBUG: op_id type: {type(op_id)}, value: {op_id}")
+        
+        try:
+            application_response = service_client.table("op_kutsero_application").insert(application_data).execute()
+        except Exception as db_error:
+            print(f"DEBUG: Database error: {db_error}")
+            # Try to get more details about the error
+            return Response({
+                'success': False,
+                'error': f'Database error: {str(db_error)}',
+                'suggestion': 'Check if database columns are UUID type or integer type'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         if not application_response.data:
             return Response({

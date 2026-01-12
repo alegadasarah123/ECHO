@@ -500,6 +500,7 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
     )
   }
 
+// In your HorseSelectionScreen, update the proceedWithApplication function:
 const proceedWithApplication = async (owner: HorseOwner) => {
   if (!userData?.profile?.kutsero_id) {
     Alert.alert("Error", "User information not available")
@@ -527,14 +528,16 @@ const proceedWithApplication = async (owner: HorseOwner) => {
       }
     )
 
+    // Handle non-JSON responses
+    const responseText = await response.text()
+    console.log("DEBUG: Raw response:", responseText)
+    
     let data
     try {
-      data = await response.json()
+      data = JSON.parse(responseText)
     } catch (parseError) {
-      console.log("DEBUG: Failed to parse JSON response")
-      const textResponse = await response.text()
-      console.log("DEBUG: Raw response:", textResponse)
-      throw new Error(`Invalid response from server: ${textResponse}`)
+      console.log("DEBUG: Failed to parse JSON, response was:", responseText.substring(0, 200))
+      throw new Error(`Server returned non-JSON: ${responseText.substring(0, 100)}`)
     }
 
     console.log("DEBUG: Status:", response.status)
@@ -555,22 +558,9 @@ const proceedWithApplication = async (owner: HorseOwner) => {
     } else {
       let errorMessage = data.error || "Failed to submit application"
 
-      // Clean up error message
-      if (typeof errorMessage === 'string') {
-        // Remove Python dictionary formatting if present
-        if (errorMessage.includes("'message':")) {
-          try {
-            const cleaned = errorMessage.replace(/'/g, '"')
-            const parsed = JSON.parse(cleaned)
-            errorMessage = parsed.message || errorMessage
-          } catch (e) {
-            // If parsing fails, extract message manually
-            const match = errorMessage.match(/message': '([^']+)'/)
-            if (match && match[1]) {
-              errorMessage = match[1]
-            }
-          }
-        }
+      // Check for database type error
+      if (errorMessage.includes('22P02') || errorMessage.includes('invalid input syntax')) {
+        errorMessage = "Database type mismatch. Please contact support. (Error: ID type mismatch)"
       }
 
       Alert.alert("Application Failed", errorMessage)
