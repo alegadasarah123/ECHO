@@ -508,118 +508,73 @@ export default function DashboardScreen() {
   }
 
   const loadCurrentAssignment = async (kutserroId: string) => {
-  try {
-    setIsLoadingHorse(true);
-    console.log("Loading assignment for kutsero:", kutserroId);
-    
-    // First check if we have a new assignment from horse selection
-    const newAssignmentData = await SecureStore.getItemAsync("newAssignmentData");
-    
-    if (newAssignmentData) {
-      try {
-        const parsedAssignment = JSON.parse(newAssignmentData);
-        console.log("Found new assignment data:", parsedAssignment);
-        
-        const horse: Horse = {
-          id: parsedAssignment.horse_id,
-          name: parsedAssignment.horse_name,
-          healthStatus: "Healthy", // Default to healthy
-          status: "Assigned to you",
-          image: parsedAssignment.horse_image || "https://via.placeholder.com/150?text=Horse",
-          breed: parsedAssignment.horse_breed || "Unknown",
-          age: parsedAssignment.horse_age || 0,
-          color: parsedAssignment.horse_color || "Unknown",
-          operatorName: parsedAssignment.operator_name || "Unknown Owner",
-          assignmentStatus: "assigned",
-          currentAssignmentId: parsedAssignment.id,
-          lastCheckup: "N/A",
-          nextCheckup: "N/A",
-        };
-        
-        console.log("Setting horse from new assignment:", horse.name);
-        setSelectedHorse(horse);
-        
-        // Save to both storages
-        await SecureStore.setItemAsync("selectedHorseData", JSON.stringify(horse));
-        await AsyncStorage.setItem("selectedHorseData", JSON.stringify(horse));
-        
-        // Clear the new assignment flag
-        await SecureStore.deleteItemAsync("newAssignmentData");
-        
-        return; // Skip the API call since we have fresh data
-      } catch (parseError) {
-        console.error("Error parsing new assignment data:", parseError);
-        await SecureStore.deleteItemAsync("newAssignmentData");
-      }
-    }
-    
-    // Fall back to stored horse data
-    const storedHorseData = await SecureStore.getItemAsync("selectedHorseData");
-    if (storedHorseData) {
-      try {
-        const parsedHorseData = JSON.parse(storedHorseData);
-        console.log("Loaded stored horse data:", parsedHorseData.name);
-        setSelectedHorse(parsedHorseData);
-      } catch (parseError) {
-        console.error("Error parsing stored horse data:", parseError);
-      }
-    }
-    
-    // Always try to get the latest assignment from API
-    const response = await fetch(`${API_BASE_URL}/current_assignment/?kutsero_id=${kutserroId}`, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      console.log("Assignment API response:", data);
+    try {
+      setIsLoadingHorse(true)
+      console.log("Loading assignment for kutsero:", kutserroId)
       
-      if (data.success && data.assignment && data.assignment.horse) {
-        const horseData = data.assignment;
-        const imageUrl = horseData.horse.image || "https://via.placeholder.com/150?text=Horse";
-        
-        const horse: Horse = {
-          id: horseData.horse.id,
-          name: horseData.horse.name,
-          healthStatus: horseData.horse.healthStatus || "Healthy",
-          status: horseData.horse.status || "Assigned to you",
-          image: imageUrl,
-          breed: horseData.horse.breed,
-          age: horseData.horse.age,
-          color: horseData.horse.color,
-          operatorName: horseData.horse.operatorName,
-          assignmentStatus: "assigned",
-          currentAssignmentId: horseData.assignmentId,
-          lastCheckup: horseData.horse.lastCheckup || "N/A",
-          nextCheckup: horseData.horse.nextCheckup || "N/A",
-        };
-        
-        console.log("Setting horse from API:", horse.name);
-        setSelectedHorse(horse);
-        
-        // Update stored data
-        await SecureStore.setItemAsync("selectedHorseData", JSON.stringify(horse));
-        await AsyncStorage.setItem("selectedHorseData", JSON.stringify(horse));
-      } else if (!storedHorseData) {
-        // Only set default if no stored data
-        console.log("No assignment found in API, using default horse");
-        setSelectedHorse(defaultHorse);
-        await SecureStore.deleteItemAsync("selectedHorseData");
+      const storedHorseData = await SecureStore.getItemAsync("selectedHorseData")
+      if (storedHorseData) {
+        try {
+          const parsedHorseData = JSON.parse(storedHorseData)
+          console.log("Loaded stored horse data:", parsedHorseData.name, "Image:", parsedHorseData.image)
+          
+          setSelectedHorse(parsedHorseData)
+        } catch (parseError) {
+          console.error("Error parsing stored horse data:", parseError)
+        }
       }
-    } else {
-      console.log("Assignment API failed:", response.status);
-      if (!storedHorseData) {
-        setSelectedHorse(defaultHorse);
-        await SecureStore.deleteItemAsync("selectedHorseData");
+
+      const response = await fetch(`${API_BASE_URL}/current_assignment/?kutsero_id=${kutserroId}`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("Assignment API response:", data)
+        
+        if (data.assignment && data.assignment.horse) {
+          const imageUrl = data.assignment.horse.image || "https://via.placeholder.com/150?text=Horse"
+          console.log("Horse image URL from API:", imageUrl)
+          
+          const horse: Horse = {
+            id: data.assignment.horse.id,
+            name: data.assignment.horse.name,
+            healthStatus: data.assignment.horse.healthStatus as Horse["healthStatus"],
+            status: data.assignment.horse.status,
+            image: imageUrl,
+            breed: data.assignment.horse.breed,
+            age: data.assignment.horse.age,
+            color: data.assignment.horse.color,
+            operatorName: data.assignment.horse.operatorName,
+            assignmentStatus: "assigned",
+            currentAssignmentId: data.assignment.assignmentId,
+            lastCheckup: data.assignment.horse.lastCheckup,
+            nextCheckup: data.assignment.horse.nextCheckup,
+          }
+          
+          console.log("Setting horse with image URL:", horse.image)
+          setSelectedHorse(horse)
+          
+          await SecureStore.setItemAsync("selectedHorseData", JSON.stringify(horse))
+        } else {
+          console.log("No assignment found, using default horse")
+          setSelectedHorse(defaultHorse)
+          await SecureStore.deleteItemAsync("selectedHorseData")
+        }
+      } else {
+        console.log("Assignment API failed:", response.status)
+        if (!storedHorseData) {
+          setSelectedHorse(defaultHorse)
+          await SecureStore.deleteItemAsync("selectedHorseData")
+        }
       }
+    } catch (error) {
+      console.error("Error loading current assignment:", error)
+    } finally {
+      setIsLoadingHorse(false)
     }
-  } catch (error) {
-    console.error("Error loading current assignment:", error);
-  } finally {
-    setIsLoadingHorse(false);
   }
-};
 
   useEffect(() => {
     loadUserData()

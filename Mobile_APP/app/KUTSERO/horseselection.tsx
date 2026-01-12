@@ -691,6 +691,51 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
         }
       ]);
     } else {
+      // Check if assignment might have succeeded despite the error
+      // Sometimes API returns error but assignment still happens
+      console.log("Assignment API returned error, but let's check if it succeeded anyway");
+      
+      // Try to load current assignment to see if it worked
+      const checkAssignmentUrl = `${API_BASE_URL}/current_assignment/?kutsero_id=${userData.profile.kutsero_id}`;
+      const checkResponse = await fetch(checkAssignmentUrl, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+      
+      if (checkResponse.ok) {
+        const checkData = await checkResponse.json();
+        console.log("Check assignment response:", checkData);
+        
+        if (checkData.success && checkData.assignment && checkData.assignment.horse) {
+          // Assignment actually succeeded! Store it anyway
+          const horseData = checkData.assignment.horse;
+          const assignmentData = {
+            id: checkData.assignment.assignmentId || `assign_${Date.now()}`,
+            horse_id: horseData.id || horse.id,
+            horse_name: horseData.name || horse.name,
+            horse_breed: horseData.breed || horse.breed,
+            horse_age: horseData.age || horse.age,
+            horse_color: horseData.color || horse.color,
+            horse_image: horseData.image || horse.image,
+            operator_name: horseData.operatorName || horse.owner_name,
+            date_start: checkData.assignment.date_start || new Date().toISOString()
+          };
+          
+          await SecureStore.setItemAsync("newAssignmentData", JSON.stringify(assignmentData));
+          
+          Alert.alert("Success", `Horse ${horse.name} has been assigned to you!`, [
+            {
+              text: "OK",
+              onPress: () => {
+                router.back();
+              }
+            }
+          ]);
+          return;
+        }
+      }
+      
+      // If we get here, assignment really failed
       Alert.alert(
         "Assignment Failed",
         data.error || "Failed to assign horse. Please try again.",
@@ -699,6 +744,48 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
     }
   } catch (error: any) {
     console.error("Error assigning horse:", error);
+    
+    // Even if there's an error, try to check if assignment succeeded
+    if (userData?.profile?.kutsero_id) {
+      try {
+        const checkAssignmentUrl = `${API_BASE_URL}/current_assignment/?kutsero_id=${userData.profile.kutsero_id}`;
+        const checkResponse = await fetch(checkAssignmentUrl);
+        
+        if (checkResponse.ok) {
+          const checkData = await checkResponse.json();
+          if (checkData.success && checkData.assignment) {
+            // Assignment succeeded despite network error
+            const horseData = checkData.assignment.horse;
+            const assignmentData = {
+              id: checkData.assignment.assignmentId || `assign_${Date.now()}`,
+              horse_id: horseData.id || horse.id,
+              horse_name: horseData.name || horse.name,
+              horse_breed: horseData.breed || horse.breed,
+              horse_age: horseData.age || horse.age,
+              horse_color: horseData.color || horse.color,
+              horse_image: horseData.image || horse.image,
+              operator_name: horseData.operatorName || horse.owner_name,
+              date_start: checkData.assignment.date_start || new Date().toISOString()
+            };
+            
+            await SecureStore.setItemAsync("newAssignmentData", JSON.stringify(assignmentData));
+            
+            Alert.alert("Success", `Horse ${horse.name} has been assigned to you!`, [
+              {
+                text: "OK",
+                onPress: () => {
+                  router.back();
+                }
+              }
+            ]);
+            return;
+          }
+        }
+      } catch (checkError) {
+        console.log("Failed to check assignment status:", checkError);
+      }
+    }
+    
     Alert.alert(
       "Error", 
       error.message || "Failed to assign horse. Please check your connection and try again."
