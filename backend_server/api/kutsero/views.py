@@ -1056,19 +1056,36 @@ def assign_horse(request):
         
         has_checked_in_horse = len(active_assignments_response.data) > 0
         
-        # 🚨 IF USER HAS A CHECKED-IN HORSE, THEY CANNOT CHANGE!
+        # 🚨 IF USER HAS A CHECKED-IN HORSE, THEY CANNOT CHANGE UNLESS THEY CHECK OUT FIRST!
         if has_checked_in_horse:
             current_assignment = active_assignments_response.data[0]
+            current_horse_id = current_assignment["horse_id"]
             
-            # Get horse name separately
+            # If trying to assign the SAME horse that's already checked in, just return success
+            if current_horse_id == horse_id:
+                print(f"✅ Already checked in to same horse: {current_horse_id}")
+                return Response({
+                    "success": True,
+                    "message": "You are already checked in to this horse",
+                    "assignment": {
+                        "assign_id": current_assignment["assign_id"],
+                        "horse_id": current_horse_id,
+                        "date_start": current_assignment["date_start"],
+                        "date_end": current_assignment["date_end"],
+                        "is_checked_in": True
+                    }
+                }, status=status.HTTP_200_OK)
+            
+            # Get horse name for error message
             horse_response = service_client.table("horse_profile").select(
                 "horse_name"
-            ).eq("horse_id", current_assignment["horse_id"]).execute()
+            ).eq("horse_id", current_horse_id).execute()
             
             current_horse_name = "Unknown Horse"
             if horse_response.data:
                 current_horse_name = horse_response.data[0].get("horse_name", "Unknown Horse")
             
+            # 🚨 USER HAS A CHECKED-IN HORSE - MUST CHECK OUT FIRST!
             return Response({
                 "success": False,
                 "error": f"You currently have '{current_horse_name}' checked in. You need to check out before selecting a new horse.",
@@ -1086,44 +1103,48 @@ def assign_horse(request):
         
         has_any_assignment = len(all_assignments_response.data) > 0
         
-        # ✅ IF USER HAS AN ASSIGNMENT BUT IT'S NOT CHECKED IN, WE DELETE THE OLD ONE
+        # ✅ IF USER HAS AN ASSIGNMENT BUT IT'S NOT CHECKED IN, WE CAN DELETE THE OLD ONE
         if has_any_assignment:
-            latest_assignment = all_assignments_response.data[0]
-            current_horse_id = latest_assignment['horse_id']
+            # Filter for assignments that are NOT checked in (have date_end)
+            not_checked_in_assignments = [a for a in all_assignments_response.data if a.get('date_end') is not None]
             
-            # Get current horse name
-            current_horse_response = service_client.table("horse_profile").select(
-                "horse_name"
-            ).eq("horse_id", current_horse_id).execute()
-            
-            current_horse_name = "Unknown Horse"
-            if current_horse_response.data:
-                current_horse_name = current_horse_response.data[0].get("horse_name", "Unknown Horse")
-            
-            # If trying to assign the SAME horse, just return success
-            if current_horse_id == horse_id:
-                print(f"✅ Already assigned to same horse: {current_horse_name}")
-                return Response({
-                    "success": True,
-                    "message": f"You are already assigned to {current_horse_name}",
-                    "assignment": {
-                        "assign_id": latest_assignment["assign_id"],
-                        "horse_id": current_horse_id,
-                        "date_start": latest_assignment["date_start"],
-                        "date_end": latest_assignment["date_end"],
-                        "is_checked_in": latest_assignment["date_end"] is None
-                    }
-                }, status=status.HTTP_200_OK)
-            
-            print(f"🗑️ Deleting old assignment for horse {current_horse_name} (not checked in)")
-            
-            # 🔥 DELETE THE OLD ASSIGNMENT FIRST
-            delete_result = service_client.table("horse_assignment").delete().eq("assign_id", latest_assignment["assign_id"]).execute()
-            
-            if not delete_result.data:
-                print(f"⚠️ Warning: Could not delete old assignment {latest_assignment['assign_id']}")
-            
-            print(f"✅ Deleted old assignment {latest_assignment['assign_id']}")
+            if not_checked_in_assignments:
+                latest_assignment = not_checked_in_assignments[0]
+                current_horse_id = latest_assignment['horse_id']
+                
+                # Get current horse name
+                current_horse_response = service_client.table("horse_profile").select(
+                    "horse_name"
+                ).eq("horse_id", current_horse_id).execute()
+                
+                current_horse_name = "Unknown Horse"
+                if current_horse_response.data:
+                    current_horse_name = current_horse_response.data[0].get("horse_name", "Unknown Horse")
+                
+                # If trying to assign the SAME horse, just return success
+                if current_horse_id == horse_id:
+                    print(f"✅ Already assigned to same horse (not checked in): {current_horse_name}")
+                    return Response({
+                        "success": True,
+                        "message": f"You are already assigned to {current_horse_name}",
+                        "assignment": {
+                            "assign_id": latest_assignment["assign_id"],
+                            "horse_id": current_horse_id,
+                            "date_start": latest_assignment["date_start"],
+                            "date_end": latest_assignment["date_end"],
+                            "is_checked_in": False
+                        }
+                    }, status=status.HTTP_200_OK)
+                
+                print(f"🗑️ Deleting old assignment for horse {current_horse_name} (not checked in)")
+                
+                # 🔥 DELETE THE OLD ASSIGNMENT FIRST
+                delete_result = service_client.table("horse_assignment").delete().eq("assign_id", latest_assignment["assign_id"]).execute()
+                
+                if not delete_result.data:
+                    print(f"⚠️ Warning: Could not delete old assignment {latest_assignment['assign_id']}")
+                
+                print(f"✅ Deleted old assignment {latest_assignment['assign_id']}")
         
         # 🔍 THIRD: Check if target horse is already assigned AND CHECKED IN to someone else
         horse_active_assignments = service_client.table("horse_assignment").select(
@@ -1210,7 +1231,7 @@ def assign_horse(request):
         response_data = {
             "success": True,
             "message": "Horse assigned successfully",
-            "action": "switched" if has_any_assignment else "assigned",
+            "action": "switched" if has_any_assignment and not has_checked_in_horse else "assigned",
             "assignment": {
                 "assign_id": assign_id,
                 "kutsero_id": kutsero_id,
@@ -1250,7 +1271,7 @@ def assign_horse(request):
             "success": False,
             "error": str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+        
 @api_view(['GET'])
 def get_assignment_history(request):
     """
