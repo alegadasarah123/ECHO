@@ -5147,23 +5147,16 @@ def apply_to_owner(request):
     """
     try:
         data = request.data
-        kutsero_id = data.get('kutsero_id')  # This should be user.id from users table
+        kutsero_id = data.get('kutsero_id')
         op_id = data.get('op_id')
         
         print(f"DEBUG [apply_to_owner]: Received kutsero_id: {kutsero_id}, op_id: {op_id}")
-        print(f"DEBUG [apply_to_owner]: Type check - kutsero_id is UUID: {is_valid_uuid(kutsero_id)}, op_id is UUID: {is_valid_uuid(op_id)}")
+        print(f"DEBUG [apply_to_owner]: Type of kutsero_id: {type(kutsero_id)}, Type of op_id: {type(op_id)}")
         
         if not kutsero_id or not op_id:
             return Response({
                 'success': False,
                 'error': 'kutsero_id and op_id are required'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validate UUID format
-        if not is_valid_uuid(kutsero_id) or not is_valid_uuid(op_id):
-            return Response({
-                'success': False,
-                'error': 'Invalid ID format. Must be valid UUID.'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
@@ -5178,17 +5171,19 @@ def apply_to_owner(request):
                 'error': 'Owner not found'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        # Check if kutsero exists (in kutsero_profile)
+        # Check if kutsero exists (in kutsero_profile) - USE THE CORRECT COLUMN NAME
         kutsero_response = service_client.table("kutsero_profile").select("*").eq("kutsero_id", kutsero_id).execute()
         
         if not kutsero_response.data:
             print(f"DEBUG: Kutsero with kutsero_id {kutsero_id} not found in kutsero_profile")
-            # Try to find kutsero by user ID
-            kutsero_by_user = service_client.table("kutsero_profile").select("*").execute()
-            print(f"DEBUG: All kutseros: {kutsero_by_user.data}")
+            
+            # Let's see what kutsero IDs are in the database
+            all_kutseros = service_client.table("kutsero_profile").select("kutsero_id").limit(5).execute()
+            print(f"DEBUG: Sample kutsero IDs in database: {[k['kutsero_id'] for k in (all_kutseros.data or [])]}")
+            
             return Response({
                 'success': False,
-                'error': 'Kutsero profile not found'
+                'error': f'Kutsero profile not found. ID: {kutsero_id}'
             }, status=status.HTTP_404_NOT_FOUND)
         
         # Check if already has an application with this owner
@@ -5198,6 +5193,7 @@ def apply_to_owner(request):
         
         if existing_app_response.data:
             existing_app = existing_app_response.data[0]
+            print(f"DEBUG: Existing application status: {existing_app['status']}")
             
             if existing_app['status'] == 'pending':
                 return Response({
@@ -5215,35 +5211,51 @@ def apply_to_owner(request):
                 print(f"DEBUG: Deleted rejected application {existing_app['application_id']}")
         
         # Create new application
+        application_id = str(uuid.uuid4())
+        current_date = datetime.now().date().isoformat()
+        current_timestamp = datetime.now().isoformat()
+        
         application_data = {
-            'application_id': str(uuid.uuid4()),
+            'application_id': application_id,
             'op_id': op_id,
             'kutsero_id': kutsero_id,
-            'application_date': datetime.now().date().isoformat(),  # Date only for date column
+            'application_date': current_date,
             'status': 'pending',
-            'created_at': datetime.now().isoformat(),
-            'updated_at': datetime.now().isoformat()
+            'created_at': current_timestamp,
+            'updated_at': current_timestamp
         }
         
         print(f"DEBUG: Creating application with data: {application_data}")
         
+        # Check table structure first
+        try:
+            table_structure = service_client.table("op_kutsero_application").select("*").limit(1).execute()
+            print(f"DEBUG: Table structure sample: {table_structure.data}")
+        except Exception as e:
+            print(f"DEBUG: Error getting table structure: {e}")
+        
+        # Insert the application
         try:
             application_response = service_client.table("op_kutsero_application").insert(application_data).execute()
             print(f"DEBUG: Application insert response: {application_response}")
         except Exception as db_error:
-            print(f"DEBUG: Database error details: {str(db_error)}")
-            # Try to get column info
-            try:
-                table_info = service_client.table("op_kutsero_application").select("*").limit(0).execute()
-                print(f"DEBUG: Table structure: {table_info}")
-            except:
-                pass
-            raise db_error
+            print(f"DEBUG: Database insert error: {str(db_error)}")
+            return Response({
+                'success': False,
+                'error': f'Database error: {str(db_error)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        if not application_response.data:
+            print(f"DEBUG: No data returned from insert, but no error thrown")
+            # Try to fetch the inserted record
+            check_response = service_client.table("op_kutsero_application").select("*").eq("application_id", application_id).execute()
+            if check_response.data:
+                application_response.data = check_response.data
         
         if not application_response.data:
             return Response({
                 'success': False,
-                'error': 'Failed to create application'
+                'error': 'Failed to create application (no data returned)'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         new_application = application_response.data[0]
@@ -5251,10 +5263,14 @@ def apply_to_owner(request):
         # Get owner name for response
         owner = owner_response.data[0]
         owner_name = f"{owner.get('op_fname', '')} {owner.get('op_lname', '')}".strip()
+        if owner.get('op_mname'):
+            owner_name = f"{owner.get('op_fname', '')} {owner.get('op_mname', '')} {owner.get('op_lname', '')}".strip()
+        
+        print(f"DEBUG: Application created successfully. Owner: {owner_name}")
         
         return Response({
             'success': True,
-            'message': 'Application submitted successfully',
+            'message': f'Application submitted successfully to {owner_name}',
             'application': {
                 'id': new_application['application_id'],
                 'op_id': new_application['op_id'],
@@ -5268,9 +5284,15 @@ def apply_to_owner(request):
         print(f"ERROR in apply_to_owner: {str(e)}")
         traceback.print_exc()
         error_msg = str(e)
-        # Clean up error message
-        if '22P02' in error_msg or 'invalid input syntax' in error_msg:
-            error_msg = "Database type error: Please check if all IDs are valid UUIDs."
+        
+        # Provide more helpful error messages
+        if '22P02' in error_msg:
+            error_msg = "Database type error: Invalid UUID format. Please check the IDs."
+        elif 'invalid input syntax' in error_msg:
+            error_msg = "Invalid input format. Please check if the IDs are correct."
+        elif 'relation' in error_msg.lower() and 'does not exist' in error_msg.lower():
+            error_msg = "Database table not found. Please contact administrator."
+        
         return Response({
             'success': False,
             'error': error_msg

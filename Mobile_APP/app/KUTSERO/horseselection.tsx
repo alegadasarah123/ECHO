@@ -510,12 +510,19 @@ const proceedWithApplication = async (owner: HorseOwner) => {
   setIsApplying(true)
 
   try {
+    // Log the data being sent
+    console.log("DEBUG [Frontend]: Sending application with:", {
+      kutsero_id: userData.profile.kutsero_id,
+      op_id: owner.op_id,
+      owner_name: owner.full_name
+    })
+
     const payload = {
       op_id: owner.op_id,
       kutsero_id: userData.profile.kutsero_id
     }
 
-    console.log("DEBUG: Sending application", payload)
+    console.log("DEBUG [Frontend]: Full URL:", `${API_BASE_URL}/apply_to_owner/`)
 
     const response = await fetch(
       `${API_BASE_URL}/apply_to_owner/`,
@@ -523,44 +530,59 @@ const proceedWithApplication = async (owner: HorseOwner) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Accept": "application/json"
         },
         body: JSON.stringify(payload)
       }
     )
 
-    // Handle non-JSON responses
-    const responseText = await response.text()
-    console.log("DEBUG: Raw response:", responseText)
+    console.log("DEBUG [Frontend]: Response status:", response.status)
+    
+    let responseText
+    try {
+      responseText = await response.text()
+      console.log("DEBUG [Frontend]: Raw response:", responseText)
+    } catch (textError) {
+      console.log("DEBUG [Frontend]: Could not read response text")
+      throw new Error("Could not read server response")
+    }
     
     let data
     try {
       data = JSON.parse(responseText)
     } catch (parseError) {
-      console.log("DEBUG: Failed to parse JSON, response was:", responseText.substring(0, 200))
-      throw new Error(`Server returned non-JSON: ${responseText.substring(0, 100)}`)
+      console.log("DEBUG [Frontend]: Failed to parse JSON")
+      throw new Error(`Server returned invalid JSON: ${responseText.substring(0, 200)}`)
     }
 
-    console.log("DEBUG: Status:", response.status)
-    console.log("DEBUG: Data:", data)
+    console.log("DEBUG [Frontend]: Parsed data:", data)
 
     if (response.ok && data.success) {
       Alert.alert(
         "Application Submitted",
-        `Your application to ${owner.full_name} has been submitted.`,
+        `Your application to ${owner.full_name} has been submitted successfully!`,
         [{
           text: "OK",
           onPress: () => {
+            // Refresh data to show the updated status
             refreshData()
+            // Switch to applications tab
             setActiveTab("applications")
           }
         }]
       )
     } else {
       let errorMessage = data.error || "Failed to submit application"
-
-      // Check for database type error
-      if (errorMessage.includes('22P02') || errorMessage.includes('invalid input syntax')) {
-        errorMessage = "Database type mismatch. Please contact support. (Error: ID type mismatch)"
+      
+      // Provide user-friendly error messages
+      if (errorMessage.includes('already have a pending application')) {
+        errorMessage = "You already have a pending application with this owner."
+      } else if (errorMessage.includes('already approved')) {
+        errorMessage = "You are already approved by this owner. Check your available horses."
+      } else if (errorMessage.includes('not found')) {
+        errorMessage = "Owner or user not found. Please try logging in again."
+      } else if (errorMessage.includes('Database error')) {
+        errorMessage = "System error. Please try again later."
       }
 
       Alert.alert("Application Failed", errorMessage)
@@ -568,10 +590,15 @@ const proceedWithApplication = async (owner: HorseOwner) => {
 
   } catch (error: any) {
     console.error("Apply error:", error)
-    Alert.alert(
-      "Error",
-      error.message || "Failed to submit application. Please check your connection."
-    )
+    let userMessage = error.message || "Failed to submit application."
+    
+    if (error.message.includes('Network')) {
+      userMessage = "Network error. Please check your internet connection."
+    } else if (error.message.includes('JSON')) {
+      userMessage = "Server error. Please try again later."
+    }
+    
+    Alert.alert("Error", userMessage)
   } finally {
     setIsApplying(false)
   }
@@ -607,7 +634,7 @@ const proceedWithApplication = async (owner: HorseOwner) => {
   )
 }
 
- const assignHorseToKutsero = async (horse: AvailableHorse) => {
+const assignHorseToKutsero = async (horse: AvailableHorse) => {
   if (!userData || !userData.profile?.kutsero_id) {
     Alert.alert("Error", "User information not available")
     return
@@ -615,37 +642,69 @@ const proceedWithApplication = async (owner: HorseOwner) => {
   
   setIsAssigning(true)
   try {
-    const response = await fetch(`${API_BASE_URL}/assign_horse_to_kutsero/`, {
+    console.log("DEBUG: Assigning horse", {
+      horse_id: horse.id,
+      op_id: horse.owner_id,
+      kutsero_id: userData.profile.kutsero_id
+    })
+    
+    const url = `${API_BASE_URL}/assign_horse_to_kutsero/`
+    console.log("DEBUG: Calling URL:", url)
+    
+    const payload = {
+      horse_id: horse.id,
+      op_id: horse.owner_id,
+      kutsero_id: userData.profile.kutsero_id,
+      date_start: new Date().toISOString()
+    }
+    
+    console.log("DEBUG: Payload:", payload)
+    
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        horse_id: horse.id,
-        op_id: horse.owner_id,
-        kutsero_id: userData.profile.kutsero_id,
-        date_start: new Date().toISOString()
-      })
+      body: JSON.stringify(payload)
     })
     
-    const data = await response.json()
+    // First, check what type of response we got
+    const contentType = response.headers.get('content-type')
+    console.log("DEBUG: Response status:", response.status)
+    console.log("DEBUG: Content-Type:", contentType)
     
-    console.log("DEBUG: Assign horse response:", data)
+    let responseText = await response.text()
+    console.log("DEBUG: Raw response (first 500 chars):", responseText.substring(0, 500))
+    
+    let data
+    try {
+      data = JSON.parse(responseText)
+    } catch (parseError) {
+      console.log("DEBUG: Failed to parse as JSON")
+      if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+        console.log("DEBUG: Server returned HTML instead of JSON")
+        // Extract any error message from HTML if possible
+        const errorMatch = responseText.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i) || 
+                           responseText.match(/<body[^>]*>([\s\S]*?)<\/body>/i) ||
+                           responseText.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)
+        
+        throw new Error(`Server error (HTML response). Status: ${response.status}. ${errorMatch ? 'Message: ' + errorMatch[1].substring(0, 100) : ''}`)
+      }
+      throw new Error(`Invalid response from server: ${responseText.substring(0, 100)}`)
+    }
+    
+    console.log("DEBUG: Parsed response data:", data)
     
     if (response.ok && data.success) {
-      Alert.alert(
-        "Horse Assigned",
-        `${horse.name} has been assigned to you!\n\nGo to the dashboard to check in and start working with this horse.`,
-        [
-          {
-            text: "Go to Dashboard",
-            onPress: () => {
-              // Navigate to dashboard instead of going back
-              router.replace("../../pages/kutsero/dashboard")
-            }
+      Alert.alert("Success", data.message, [
+        {
+          text: "OK",
+          onPress: () => {
+            // Go back to previous screen
+            router.back()
           }
-        ]
-      )
+        }
+      ])
     } else {
       Alert.alert(
         "Assignment Failed",
@@ -653,9 +712,12 @@ const proceedWithApplication = async (owner: HorseOwner) => {
         [{ text: "OK" }]
       )
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error assigning horse:", error)
-    Alert.alert("Error", "Failed to assign horse. Please check your connection and try again.")
+    Alert.alert(
+      "Error", 
+      error.message || "Failed to assign horse. Please check your connection and try again."
+    )
   } finally {
     setIsAssigning(false)
   }
