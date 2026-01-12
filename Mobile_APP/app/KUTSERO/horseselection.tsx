@@ -516,10 +516,11 @@ const proceedWithApplication = async (owner: HorseOwner) => {
       kutsero_id: userData.profile.kutsero_id
     };
 
-    console.log("DEBUG: Sending application", payload);
+    console.log("🚀 Sending to SIMPLE endpoint:", payload);
 
+    // Use the simple endpoint
     const response = await fetch(
-      `${API_BASE_URL}/apply_to_owner/`,
+      `${API_BASE_URL}/apply_to_owner_simple/`,  // Use simple endpoint
       {
         method: "POST",
         headers: {
@@ -529,37 +530,20 @@ const proceedWithApplication = async (owner: HorseOwner) => {
       }
     );
 
-    // IMPORTANT: Clone the response before reading it
-    const responseClone = response.clone();
-    
+    const responseText = await response.text();
+    console.log("📥 Response:", responseText);
+
     let data;
     try {
-      data = await response.json();
-    } catch (parseError) {
-      console.log("DEBUG: Failed to parse as JSON, trying text");
-      const textResponse = await responseClone.text();
-      console.log("DEBUG: Raw response text:", textResponse);
-      
-      // Try to extract JSON from text if possible
-      try {
-        const jsonMatch = textResponse.match(/\{.*\}/s);
-        if (jsonMatch) {
-          data = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error(`Invalid response: ${textResponse.substring(0, 100)}`);
-        }
-      } catch (e) {
-        throw new Error(`Invalid response format: ${textResponse.substring(0, 100)}`);
-      }
+      data = JSON.parse(responseText);
+    } catch {
+      throw new Error(`Invalid JSON: ${responseText.substring(0, 100)}`);
     }
-
-    console.log("DEBUG: Status:", response.status);
-    console.log("DEBUG: Data:", data);
 
     if (response.ok && data.success) {
       Alert.alert(
-        "Application Submitted",
-        `Your application to ${owner.full_name} has been submitted.`,
+        "Success!",
+        `Application to ${owner.full_name} submitted.`,
         [{
           text: "OK",
           onPress: () => {
@@ -569,39 +553,16 @@ const proceedWithApplication = async (owner: HorseOwner) => {
         }]
       );
     } else {
-      let errorMessage = data.error || "Failed to submit application";
-
-      // Clean up error message
-      if (typeof errorMessage === 'string') {
-        // Remove Python dictionary formatting if present
-        if (errorMessage.includes("'message':")) {
-          try {
-            const cleaned = errorMessage.replace(/'/g, '"');
-            const parsed = JSON.parse(cleaned);
-            errorMessage = parsed.message || errorMessage;
-          } catch (e) {
-            // If parsing fails, extract message manually
-            const match = errorMessage.match(/message': '([^']+)'/)
-            if (match && match[1]) {
-              errorMessage = match[1]
-            }
-          }
-        }
-      }
-
-      Alert.alert("Application Failed", errorMessage)
+      Alert.alert("Failed", data.error || "Application failed");
     }
 
   } catch (error: any) {
-    console.error("Apply error:", error)
-    Alert.alert(
-      "Error",
-      error.message || "Failed to submit application. Please check your connection."
-    )
+    console.error("Error:", error);
+    Alert.alert("Error", error.message || "Please try again");
   } finally {
-    setIsApplying(false)
+    setIsApplying(false);
   }
-}
+};
 
 
 // Update the handleSelectHorse function to check current assignment first
