@@ -1,6 +1,4 @@
-// KUTSERO Dashboard Screen
-
-
+"use client"
 
 import { useFocusEffect, useRouter } from "expo-router"
 import { useCallback, useEffect, useState, useRef } from "react"
@@ -164,7 +162,6 @@ const API_BASE_URL = "https://echo-ebl8.onrender.com/api/kutsero"
 const ImageCarousel = ({ images }: { images: string[] }) => {
   const [currentIndex, setCurrentIndex] = useState(0)
   const flatListRef = useRef<FlatList>(null)
-
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null)
 
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
@@ -413,15 +410,8 @@ export default function DashboardScreen() {
 
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] Search API response:", JSON.stringify(data, null, 2))
-        console.log("[v0] Users array:", data.users)
-        console.log("[v0] Users length:", data.users?.length)
-
         setSearchResults(data.users || [])
         setShowSearchDropdown(data.users && data.users.length > 0)
-
-        console.log("[v0] Search results set:", data.users?.length || 0)
-        console.log("[v0] Show dropdown:", data.users && data.users.length > 0)
       } else if (response.status === 401) {
         await loadUserData()
         setSearchResults([])
@@ -512,65 +502,116 @@ export default function DashboardScreen() {
       setIsLoadingHorse(true)
       console.log("Loading assignment for kutsero:", kutserroId)
       
-      const storedHorseData = await SecureStore.getItemAsync("selectedHorseData")
-      if (storedHorseData) {
-        try {
-          const parsedHorseData = JSON.parse(storedHorseData)
-          console.log("Loaded stored horse data:", parsedHorseData.name, "Image:", parsedHorseData.image)
-          
-          setSelectedHorse(parsedHorseData)
-        } catch (parseError) {
-          console.error("Error parsing stored horse data:", parseError)
-        }
+      // First check local storage for check-in status
+      const checkInData = await SecureStore.getItemAsync("checkInData")
+      if (checkInData) {
+        const parsedData = JSON.parse(checkInData)
+        setIsCheckedIn(true)
+        setCheckInTime(parsedData.checkInTime)
       }
 
+      // Call new endpoint for current assignment with check-in status
       const response = await fetch(`${API_BASE_URL}/current_assignment/?kutsero_id=${kutserroId}`, {
         method: "GET",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": userData?.access_token ? `Bearer ${userData.access_token}` : ""
+        },
       })
 
       if (response.ok) {
         const data = await response.json()
-        console.log("Assignment API response:", data)
+        console.log("Current assignment API response:", data)
         
-        if (data.assignment && data.assignment.horse) {
-          const imageUrl = data.assignment.horse.image || "https://via.placeholder.com/150?text=Horse"
-          console.log("Horse image URL from API:", imageUrl)
+        if (data.has_assignment && data.horse) {
+          const imageUrl = data.horse.image || "https://via.placeholder.com/150?text=Horse"
           
           const horse: Horse = {
-            id: data.assignment.horse.id,
-            name: data.assignment.horse.name,
-            healthStatus: data.assignment.horse.healthStatus as Horse["healthStatus"],
-            status: data.assignment.horse.status,
+            id: data.horse.id,
+            name: data.horse.name,
+            healthStatus: data.horse.health_status || (data.horse.status === 'assigned' ? "Healthy" : "Healthy"),
+            status: data.horse.status || "Assigned",
             image: imageUrl,
-            breed: data.assignment.horse.breed,
-            age: data.assignment.horse.age,
-            color: data.assignment.horse.color,
-            operatorName: data.assignment.horse.operatorName,
+            breed: data.horse.breed || "Unknown",
+            age: data.horse.age || 0,
+            color: data.horse.color || "Unknown",
+            operatorName: data.horse.operator_name || "Unknown Owner",
             assignmentStatus: "assigned",
-            currentAssignmentId: data.assignment.assignmentId,
-            lastCheckup: data.assignment.horse.lastCheckup,
-            nextCheckup: data.assignment.horse.nextCheckup,
+            currentAssignmentId: data.assignment.id,
+            lastCheckup: data.horse.last_checkup || "N/A",
+            nextCheckup: data.horse.next_checkup || "N/A",
           }
           
-          console.log("Setting horse with image URL:", horse.image)
+          console.log("Setting horse with assignment:", horse)
           setSelectedHorse(horse)
+          
+          // Update check-in status from backend
+          if (data.is_checked_in !== undefined) {
+            setIsCheckedIn(data.is_checked_in)
+            if (data.is_checked_in && data.checkin_time) {
+              const checkInTime = new Date(data.checkin_time).toLocaleTimeString([], { 
+                hour: "2-digit", 
+                minute: "2-digit" 
+              })
+              setCheckInTime(checkInTime)
+              
+              // Save to local storage
+              await SecureStore.setItemAsync(
+                "checkInData",
+                JSON.stringify({
+                  horseId: horse.id,
+                  horseName: horse.name,
+                  checkInTime: checkInTime,
+                  timestamp: Date.now(),
+                  assignmentId: data.assignment.id,
+                }),
+              )
+            } else if (!data.is_checked_in) {
+              // Clear check-in data if not checked in
+              await SecureStore.deleteItemAsync("checkInData")
+              setIsCheckedIn(false)
+              setCheckInTime(null)
+            }
+          }
           
           await SecureStore.setItemAsync("selectedHorseData", JSON.stringify(horse))
         } else {
           console.log("No assignment found, using default horse")
           setSelectedHorse(defaultHorse)
+          setIsCheckedIn(false)
+          setCheckInTime(null)
           await SecureStore.deleteItemAsync("selectedHorseData")
+          await SecureStore.deleteItemAsync("checkInData")
         }
       } else {
         console.log("Assignment API failed:", response.status)
-        if (!storedHorseData) {
+        // Check local storage as fallback
+        const storedHorseData = await SecureStore.getItemAsync("selectedHorseData")
+        if (storedHorseData) {
+          try {
+            const parsedHorseData = JSON.parse(storedHorseData)
+            setSelectedHorse(parsedHorseData)
+          } catch (parseError) {
+            console.error("Error parsing stored horse data:", parseError)
+            setSelectedHorse(defaultHorse)
+          }
+        } else {
           setSelectedHorse(defaultHorse)
-          await SecureStore.deleteItemAsync("selectedHorseData")
         }
       }
     } catch (error) {
       console.error("Error loading current assignment:", error)
+      // Fallback to local storage
+      const storedHorseData = await SecureStore.getItemAsync("selectedHorseData")
+      if (storedHorseData) {
+        try {
+          const parsedHorseData = JSON.parse(storedHorseData)
+          setSelectedHorse(parsedHorseData)
+        } catch (parseError) {
+          console.error("Error parsing stored horse data:", parseError)
+          setSelectedHorse(defaultHorse)
+        }
+      }
     } finally {
       setIsLoadingHorse(false)
     }
@@ -616,7 +657,6 @@ export default function DashboardScreen() {
           } else if (kutsero_username) {
             displayName = kutsero_username
           }
-          // Set profile image
           if (kutsero_profile_image) {
             setCurrentUserProfileImage(kutsero_profile_image)
           }
@@ -835,27 +875,63 @@ export default function DashboardScreen() {
   }
 
   const handleCheckIn = async () => {
-    if (selectedHorse.id === "default") {
+    if (selectedHorse.id === "default" || !selectedHorse.currentAssignmentId) {
       Alert.alert("No Horse Assigned", "Please select a horse first before checking in.")
       return
     }
 
+    if (isCheckedIn) {
+      Alert.alert("Already Checked In", `You are already checked in with ${selectedHorse.name} since ${checkInTime}`)
+      return
+    }
+
     try {
-      const currentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      await SecureStore.setItemAsync(
-        "checkInData",
-        JSON.stringify({
-          horseId: selectedHorse.id,
-          horseName: selectedHorse.name,
-          checkInTime: currentTime,
-          timestamp: Date.now(),
+      const response = await fetch(`${API_BASE_URL}/check_in_horse/`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": userData?.access_token ? `Bearer ${userData.access_token}` : ""
+        },
+        body: JSON.stringify({
+          assignment_id: selectedHorse.currentAssignmentId,
+          kutsero_id: userData?.profile?.kutsero_id,
         }),
-      )
-      setIsCheckedIn(true)
-      setCheckInTime(currentTime)
-      Alert.alert("Success", `Checked in with ${selectedHorse.name} at ${currentTime}`)
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok && data.success) {
+        const currentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        await SecureStore.setItemAsync(
+          "checkInData",
+          JSON.stringify({
+            horseId: selectedHorse.id,
+            horseName: selectedHorse.name,
+            checkInTime: currentTime,
+            timestamp: Date.now(),
+            assignmentId: selectedHorse.currentAssignmentId,
+          }),
+        )
+        setIsCheckedIn(true)
+        setCheckInTime(currentTime)
+        Alert.alert(
+          "Success", 
+          `Checked in with ${selectedHorse.name} at ${currentTime}\n\nYou cannot change horses while checked in.`,
+          [
+            { 
+              text: "OK",
+              onPress: () => {
+                // Refresh horse data to show updated status
+                loadCurrentAssignment(userData?.profile?.kutsero_id || '')
+              }
+            }
+          ]
+        )
+      } else {
+        Alert.alert("Check-in Failed", data.error || "Failed to check in. Please try again.")
+      }
     } catch (error) {
-      Alert.alert("Error", "Failed to check in. Please try again.")
+      Alert.alert("Error", "Failed to check in. Please check your internet connection.")
     }
   }
 
@@ -875,24 +951,32 @@ export default function DashboardScreen() {
           text: "Check Out",
           onPress: async () => {
             try {
-              const kutserroId = await SecureStore.getItemAsync("kutseroId")
-              const response = await fetch(`${API_BASE_URL}/checkout/`, {
+              const response = await fetch(`${API_BASE_URL}/check_out_horse/`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { 
+                  "Content-Type": "application/json",
+                  "Authorization": userData?.access_token ? `Bearer ${userData.access_token}` : ""
+                },
                 body: JSON.stringify({
                   assignment_id: selectedHorse.currentAssignmentId,
-                  kutsero_id: kutserroId,
+                  kutsero_id: userData?.profile?.kutsero_id,
                 }),
               })
 
               if (response.ok) {
+                const data = await response.json()
                 await SecureStore.deleteItemAsync("checkInData")
+                await SecureStore.deleteItemAsync("selectedHorseData")
                 setIsCheckedIn(false)
                 setCheckInTime(null)
                 setSelectedHorse(defaultHorse)
-                Alert.alert("Success", `Successfully checked out from ${selectedHorse.name}`)
+                Alert.alert(
+                  "Success", 
+                  `Successfully checked out from ${selectedHorse.name}\n\nYou can now select a new horse.`
+                )
               } else {
-                Alert.alert("Checkout Failed", "Failed to check out. Please try again.")
+                const errorData = await response.json()
+                Alert.alert("Checkout Failed", errorData.error || "Failed to check out. Please try again.")
               }
             } catch (error) {
               Alert.alert("Error", "Failed to check out. Please check your internet connection.")
@@ -1275,12 +1359,22 @@ export default function DashboardScreen() {
                   </Text>
                 </View>
                 <Text style={styles.readyText}>{selectedHorse.status}</Text>
+                
+                {isCheckedIn && checkInTime && (
+                  <View style={styles.checkedInIndicator}>
+                    <Text style={styles.checkedInIndicatorText}>✓ Checked in at {checkInTime}</Text>
+                  </View>
+                )}
               </View>
             </View>
             <View style={styles.reminderSection}>
               {selectedHorse.id !== "default" ? (
                 <>
-                  <Text style={styles.reminderText}>Remember to check-out your horse at the end of the day</Text>
+                  <Text style={styles.reminderText}>
+                    {isCheckedIn 
+                      ? "Remember to check-out your horse at the end of the day"
+                      : "Check in to start working with your horse"}
+                  </Text>
 
                   <View style={styles.checkInOutContainer}>
                     {!isCheckedIn ? (
@@ -1289,9 +1383,6 @@ export default function DashboardScreen() {
                       </TouchableOpacity>
                     ) : (
                       <View style={styles.checkedInContainer}>
-                        <View style={styles.checkedInInfo}>
-                          <Text style={styles.checkedInText}>✓ Checked in at {checkInTime}</Text>
-                        </View>
                         <TouchableOpacity style={styles.checkOutButton} onPress={handleCheckOut}>
                           <Text style={styles.checkOutButtonText}>Check Out</Text>
                         </TouchableOpacity>
@@ -1303,8 +1394,35 @@ export default function DashboardScreen() {
                 <Text style={styles.reminderText}>Select a horse to start working</Text>
               )}
 
-              <TouchableOpacity style={styles.changeHorseButton} onPress={() => router.push("./horseselection")}>
-                <Text style={styles.changeHorseButtonText}>
+              <TouchableOpacity 
+                style={[
+                  styles.changeHorseButton, 
+                  isCheckedIn && styles.disabledButton
+                ]} 
+                onPress={() => {
+                  if (isCheckedIn) {
+                    Alert.alert(
+                      "Cannot Change Horse",
+                      "You need to check out from your current horse before selecting a new one.",
+                      [
+                        { text: "OK", style: "default" },
+                        { 
+                          text: "Check Out Now", 
+                          onPress: handleCheckOut,
+                          style: "destructive"
+                        }
+                      ]
+                    )
+                  } else {
+                    router.push("./horseselection")
+                  }
+                }}
+                disabled={isCheckedIn}
+              >
+                <Text style={[
+                  styles.changeHorseButtonText,
+                  isCheckedIn && styles.disabledButtonText
+                ]}>
                   {selectedHorse.id === "default" ? "Select Horse" : "Change Horse"}
                 </Text>
               </TouchableOpacity>
@@ -1972,10 +2090,17 @@ const styles = StyleSheet.create({
     marginTop: verticalScale(8),
     minHeight: 40,
   },
+  disabledButton: {
+    backgroundColor: "#CCCCCC",
+    opacity: 0.6,
+  },
   changeHorseButtonText: {
     color: "white",
     fontSize: moderateScale(12),
     fontWeight: "600",
+  },
+  disabledButtonText: {
+    color: "#666666",
   },
   horseCard: {
     flexDirection: "row",
@@ -2035,6 +2160,20 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(12),
     color: "#666",
   },
+  checkedInIndicator: {
+    marginTop: verticalScale(6),
+    paddingVertical: verticalScale(4),
+    paddingHorizontal: scale(8),
+    backgroundColor: "#E8F5E8",
+    borderRadius: scale(6),
+    borderLeftWidth: 3,
+    borderLeftColor: "#4CAF50",
+  },
+  checkedInIndicatorText: {
+    fontSize: moderateScale(11),
+    color: "#2E7D32",
+    fontWeight: "500",
+  },
   reminderSection: {
     borderTopWidth: 1,
     borderTopColor: "#F0F0F0",
@@ -2045,6 +2184,39 @@ const styles = StyleSheet.create({
     color: "#666",
     lineHeight: moderateScale(14),
     marginBottom: verticalScale(8),
+  },
+  checkInOutContainer: {
+    marginTop: verticalScale(8),
+    marginBottom: verticalScale(8),
+  },
+  checkInButton: {
+    backgroundColor: "#4CAF50",
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(20),
+    borderRadius: scale(8),
+    alignItems: "center",
+    minHeight: 40,
+  },
+  checkInButtonText: {
+    color: "white",
+    fontSize: moderateScale(12),
+    fontWeight: "600",
+  },
+  checkedInContainer: {
+    gap: verticalScale(6),
+  },
+  checkOutButton: {
+    backgroundColor: "#FF6B6B",
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(20),
+    borderRadius: scale(8),
+    alignItems: "center",
+    minHeight: 40,
+  },
+  checkOutButtonText: {
+    color: "white",
+    fontSize: moderateScale(12),
+    fontWeight: "600",
   },
   activitiesSection: {
     backgroundColor: "white",
@@ -2465,52 +2637,6 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     color: "#999",
     textAlign: "center",
-  },
-  checkInOutContainer: {
-    marginTop: verticalScale(8),
-    marginBottom: verticalScale(8),
-  },
-  checkInButton: {
-    backgroundColor: "#4CAF50",
-    paddingVertical: verticalScale(10),
-    paddingHorizontal: scale(20),
-    borderRadius: scale(8),
-    alignItems: "center",
-    minHeight: 40,
-  },
-  checkInButtonText: {
-    color: "white",
-    fontSize: moderateScale(12),
-    fontWeight: "600",
-  },
-  checkedInContainer: {
-    gap: verticalScale(6),
-  },
-  checkedInInfo: {
-    backgroundColor: "#E8F5E8",
-    paddingVertical: verticalScale(6),
-    paddingHorizontal: scale(10),
-    borderRadius: scale(6),
-    borderLeftWidth: 3,
-    borderLeftColor: "#4CAF50",
-  },
-  checkedInText: {
-    color: "#2E7D32",
-    fontSize: moderateScale(11),
-    fontWeight: "500",
-  },
-  checkOutButton: {
-    backgroundColor: "#FF6B6B",
-    paddingVertical: verticalScale(10),
-    paddingHorizontal: scale(20),
-    borderRadius: scale(8),
-    alignItems: "center",
-    minHeight: 40,
-  },
-  checkOutButtonText: {
-    color: "white",
-    fontSize: moderateScale(12),
-    fontWeight: "600",
   },
   facebookPostCard: {
     backgroundColor: "#FFFFFF",
