@@ -504,23 +504,22 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
 
 const proceedWithApplication = async (owner: HorseOwner) => {
   if (!userData?.profile?.kutsero_id) {
-    Alert.alert("Error", "User information not available");
-    return;
+    Alert.alert("Error", "User information not available")
+    return
   }
 
-  setIsApplying(true);
+  setIsApplying(true)
 
   try {
     const payload = {
       op_id: owner.op_id,
       kutsero_id: userData.profile.kutsero_id
-    };
+    }
 
-    console.log("🚀 Sending to SIMPLE endpoint:", payload);
+    console.log("DEBUG: Sending application", payload)
 
-    // Use the simple endpoint
     const response = await fetch(
-      `${API_BASE_URL}/apply_to_owner_simple/`,  // Use simple endpoint
+      `${API_BASE_URL}/apply_to_owner/`,
       {
         method: "POST",
         headers: {
@@ -528,41 +527,67 @@ const proceedWithApplication = async (owner: HorseOwner) => {
         },
         body: JSON.stringify(payload)
       }
-    );
+    )
 
-    const responseText = await response.text();
-    console.log("📥 Response:", responseText);
-
-    let data;
+    let data
     try {
-      data = JSON.parse(responseText);
-    } catch {
-      throw new Error(`Invalid JSON: ${responseText.substring(0, 100)}`);
+      data = await response.json()
+    } catch (parseError) {
+      console.log("DEBUG: Failed to parse JSON response")
+      const textResponse = await response.text()
+      console.log("DEBUG: Raw response:", textResponse)
+      throw new Error(`Invalid response from server: ${textResponse}`)
     }
+
+    console.log("DEBUG: Status:", response.status)
+    console.log("DEBUG: Data:", data)
 
     if (response.ok && data.success) {
       Alert.alert(
-        "Success!",
-        `Application to ${owner.full_name} submitted.`,
+        "Application Submitted",
+        `Your application to ${owner.full_name} has been submitted.`,
         [{
           text: "OK",
           onPress: () => {
-            refreshData();
-            setActiveTab("applications");
+            refreshData()
+            setActiveTab("applications")
           }
         }]
-      );
+      )
     } else {
-      Alert.alert("Failed", data.error || "Application failed");
+      let errorMessage = data.error || "Failed to submit application"
+
+      // Clean up error message
+      if (typeof errorMessage === 'string') {
+        // Remove Python dictionary formatting if present
+        if (errorMessage.includes("'message':")) {
+          try {
+            const cleaned = errorMessage.replace(/'/g, '"')
+            const parsed = JSON.parse(cleaned)
+            errorMessage = parsed.message || errorMessage
+          } catch (e) {
+            // If parsing fails, extract message manually
+            const match = errorMessage.match(/message': '([^']+)'/)
+            if (match && match[1]) {
+              errorMessage = match[1]
+            }
+          }
+        }
+      }
+
+      Alert.alert("Application Failed", errorMessage)
     }
 
   } catch (error: any) {
-    console.error("Error:", error);
-    Alert.alert("Error", error.message || "Please try again");
+    console.error("Apply error:", error)
+    Alert.alert(
+      "Error",
+      error.message || "Failed to submit application. Please check your connection."
+    )
   } finally {
-    setIsApplying(false);
+    setIsApplying(false)
   }
-};
+}
 
 
 // Update the handleSelectHorse function to check current assignment first
