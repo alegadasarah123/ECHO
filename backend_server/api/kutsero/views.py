@@ -5354,7 +5354,9 @@ def apply_to_owner(request):
         kutsero_id = data.get('kutsero_id')
         op_id = data.get('op_id')
         
-        print(f"DEBUG apply_to_owner: Received - kutsero_id={kutsero_id}, op_id={op_id}")
+        print(f"🚨 DEBUG apply_to_owner START 🚨")
+        print(f"kutsero_id: {kutsero_id} (type: {type(kutsero_id)})")
+        print(f"op_id: {op_id} (type: {type(op_id)})")
         
         if not kutsero_id or not op_id:
             return Response({
@@ -5364,10 +5366,11 @@ def apply_to_owner(request):
         
         # Validate UUID format
         try:
-            uuid.UUID(kutsero_id)
-            uuid.UUID(op_id)
+            kutsero_uuid = uuid.UUID(kutsero_id)
+            op_uuid = uuid.UUID(op_id)
+            print(f"✅ UUID validation passed")
         except (ValueError, AttributeError) as e:
-            print(f"DEBUG: Invalid UUID format - kutsero_id: {kutsero_id}, op_id: {op_id}, error: {e}")
+            print(f"❌ Invalid UUID format: {e}")
             return Response({
                 'success': False,
                 'error': f'Invalid UUID format: {str(e)}'
@@ -5376,36 +5379,38 @@ def apply_to_owner(request):
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
         # Check if owner exists
-        print(f"DEBUG: Checking if owner exists - op_id: {op_id}")
-        owner_response = service_client.table("horse_op_profile").select("*").eq("op_id", op_id).execute()
+        print(f"🔍 Checking owner existence: {op_id}")
+        owner_response = service_client.table("horse_op_profile").select("op_id, op_fname, op_lname").eq("op_id", op_id).execute()
         
         if not owner_response.data:
-            print(f"DEBUG: Owner not found - op_id: {op_id}")
+            print(f"❌ Owner not found: {op_id}")
             return Response({
                 'success': False,
                 'error': 'Owner not found'
             }, status=status.HTTP_404_NOT_FOUND)
+        print(f"✅ Owner found: {owner_response.data[0]}")
         
         # Check if kutsero exists
-        print(f"DEBUG: Checking if kutsero exists - kutsero_id: {kutsero_id}")
-        kutsero_response = service_client.table("kutsero_profile").select("*").eq("kutsero_id", kutsero_id).execute()
+        print(f"🔍 Checking kutsero existence: {kutsero_id}")
+        kutsero_response = service_client.table("kutsero_profile").select("kutsero_id, kutsero_fname, kutsero_lname").eq("kutsero_id", kutsero_id).execute()
         
         if not kutsero_response.data:
-            print(f"DEBUG: Kutsero not found - kutsero_id: {kutsero_id}")
+            print(f"❌ Kutsero not found: {kutsero_id}")
             return Response({
                 'success': False,
                 'error': 'Kutsero not found'
             }, status=status.HTTP_404_NOT_FOUND)
+        print(f"✅ Kutsero found: {kutsero_response.data[0]}")
         
-        # Check if already has an application with this owner
-        print(f"DEBUG: Checking existing applications - op_id: {op_id}, kutsero_id: {kutsero_id}")
+        # Check existing applications
+        print(f"🔍 Checking existing applications...")
         existing_app_response = service_client.table("op_kutsero_application").select(
             "application_id, status"
         ).eq("op_id", op_id).eq("kutsero_id", kutsero_id).execute()
         
         if existing_app_response.data:
             existing_app = existing_app_response.data[0]
-            print(f"DEBUG: Found existing application - status: {existing_app['status']}")
+            print(f"⚠️ Existing application found: {existing_app['status']}")
             
             if existing_app['status'] == 'pending':
                 return Response({
@@ -5418,75 +5423,142 @@ def apply_to_owner(request):
                     'error': 'You are already approved by this owner'
                 }, status=status.HTTP_400_BAD_REQUEST)
             elif existing_app['status'] == 'rejected':
-                # Delete rejected application to allow re-application
-                print(f"DEBUG: Deleting rejected application - application_id: {existing_app['application_id']}")
+                print(f"🗑️ Deleting rejected application...")
                 service_client.table("op_kutsero_application").delete().eq("application_id", existing_app['application_id']).execute()
         
-        # Create new application using REST API directly (more reliable for UUIDs)
-        application_data = {
-            'application_id': str(uuid.uuid4()),
-            'op_id': op_id,
-            'kutsero_id': kutsero_id,
-            'application_date': datetime.now().isoformat(),
-            'status': 'pending',
-            'created_at': datetime.now().isoformat(),
-            'updated_at': datetime.now().isoformat()
-        }
+        # Try to create application using different methods
+        print(f"🔄 Attempting to create application...")
         
-        print(f"DEBUG: Application data to insert: {application_data}")
-        
-        # Use REST API directly for better UUID handling
-        insert_url = f"{SUPABASE_URL}/rest/v1/op_kutsero_application"
-        headers = {
-            "apikey": SUPABASE_SERVICE_ROLE_KEY,
-            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-            "Content-Type": "application/json",
-            "Prefer": "return=representation"
-        }
-        
-        print(f"DEBUG: Calling REST API: {insert_url}")
-        insert_response = requests.post(insert_url, json=application_data, headers=headers)
-        
-        print(f"DEBUG: Insert response status: {insert_response.status_code}")
-        print(f"DEBUG: Insert response text: {insert_response.text}")
-        
-        if insert_response.status_code not in [200, 201]:
-            error_text = insert_response.text
-            print(f"ERROR: Failed to insert application: {error_text}")
+        # Method 1: Use supabase client with string UUIDs
+        try:
+            print("🔧 Method 1: Using supabase client...")
+            application_data = {
+                'application_id': str(uuid.uuid4()),
+                'op_id': op_id,  # String UUID
+                'kutsero_id': kutsero_id,  # String UUID
+                'application_date': datetime.now().isoformat(),
+                'status': 'pending'
+            }
             
-            # Try alternative: use supabase client with proper serialization
-            try:
-                print("DEBUG: Trying alternative insertion with supabase client...")
-                application_response = service_client.table("op_kutsero_application").insert(application_data).execute()
-                
-                if not application_response.data:
-                    raise Exception("Supabase client insertion also failed")
-                
+            print(f"📦 Application data: {application_data}")
+            
+            application_response = service_client.table("op_kutsero_application").insert(application_data).execute()
+            
+            if application_response.data:
+                print(f"✅ Method 1 SUCCESS: {application_response.data[0]}")
                 new_application = application_response.data[0]
-                print(f"DEBUG: Alternative insertion successful: {new_application}")
+            else:
+                raise Exception("No data returned from supabase client")
                 
-            except Exception as alt_error:
-                print(f"ERROR: Alternative insertion failed: {alt_error}")
-                return Response({
-                    'success': False,
-                    'error': f'Failed to create application. Database error: {error_text}'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        else:
-            insert_data = insert_response.json()
-            new_application = insert_data[0] if isinstance(insert_data, list) else insert_data
-            print(f"DEBUG: REST API insertion successful: {new_application}")
+        except Exception as method1_error:
+            print(f"❌ Method 1 failed: {method1_error}")
+            
+            # Method 2: Use REST API with explicit content type
+            try:
+                print("🔧 Method 2: Using REST API...")
+                
+                # Prepare data for REST API
+                rest_data = {
+                    'application_id': str(uuid.uuid4()),
+                    'op_id': op_id,
+                    'kutsero_id': kutsero_id,
+                    'application_date': datetime.now().date().isoformat(),  # Date only for date column
+                    'status': 'pending',
+                    'created_at': datetime.now().isoformat(),
+                    'updated_at': datetime.now().isoformat()
+                }
+                
+                print(f"📦 REST API data: {rest_data}")
+                
+                insert_url = f"{SUPABASE_URL}/rest/v1/op_kutsero_application"
+                headers = {
+                    "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                    "Content-Type": "application/json",
+                    "Prefer": "return=representation"
+                }
+                
+                print(f"🌐 Calling: {insert_url}")
+                insert_response = requests.post(insert_url, json=rest_data, headers=headers)
+                print(f"📡 Response status: {insert_response.status_code}")
+                print(f"📡 Response text: {insert_response.text}")
+                
+                if insert_response.status_code in [200, 201]:
+                    insert_data = insert_response.json()
+                    new_application = insert_data[0] if isinstance(insert_data, list) else insert_data
+                    print(f"✅ Method 2 SUCCESS: {new_application}")
+                else:
+                    raise Exception(f"REST API failed: {insert_response.text}")
+                    
+            except Exception as method2_error:
+                print(f"❌ Method 2 failed: {method2_error}")
+                
+                # Method 3: Use raw SQL query
+                try:
+                    print("🔧 Method 3: Using raw SQL...")
+                    
+                    # Get a direct database connection
+                    sql_query = """
+                    INSERT INTO op_kutsero_application 
+                    (application_id, op_id, kutsero_id, application_date, status, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    RETURNING *;
+                    """
+                    
+                    sql_params = [
+                        str(uuid.uuid4()),  # application_id
+                        op_id,  # op_id as UUID
+                        kutsero_id,  # kutsero_id as UUID
+                        datetime.now().date().isoformat(),  # application_date
+                        'pending',  # status
+                        datetime.now().isoformat(),  # created_at
+                        datetime.now().isoformat()   # updated_at
+                    ]
+                    
+                    print(f"🐘 SQL params: {sql_params}")
+                    
+                    # Use Supabase's REST API for SQL
+                    sql_url = f"{SUPABASE_URL}/rest/v1/rpc/execute_sql"
+                    sql_headers = {
+                        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                        "Content-Type": "application/json"
+                    }
+                    
+                    sql_payload = {
+                        "query": sql_query,
+                        "params": sql_params
+                    }
+                    
+                    sql_response = requests.post(sql_url, json=sql_payload, headers=sql_headers)
+                    print(f"📡 SQL response: {sql_response.status_code}, {sql_response.text}")
+                    
+                    if sql_response.status_code == 200:
+                        sql_data = sql_response.json()
+                        new_application = sql_data[0] if isinstance(sql_data, list) else sql_data
+                        print(f"✅ Method 3 SUCCESS: {new_application}")
+                    else:
+                        raise Exception(f"SQL failed: {sql_response.text}")
+                        
+                except Exception as method3_error:
+                    print(f"❌ All methods failed: {method3_error}")
+                    return Response({
+                        'success': False,
+                        'error': f'Failed to create application. Please check database schema. Error: {str(method3_error)}'
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
-        # Get owner name for response
+        # Success!
         owner = owner_response.data[0]
-        owner_name = f"{owner.get('op_fname', '')} {owner.get('op_lname', '')}".strip()
-        if not owner_name.strip():
-            owner_name = owner.get('op_email', 'Unknown Owner')
+        owner_name = f"{owner.get('op_fname', '')} {owner.get('op_lname', '')}".strip() or owner.get('op_email', 'Unknown Owner')
         
-        # Get kutsero name for response
         kutsero = kutsero_response.data[0]
-        kutsero_name = f"{kutsero.get('kutsero_fname', '')} {kutsero.get('kutsero_lname', '')}".strip()
-        if not kutsero_name.strip():
-            kutsero_name = kutsero.get('kutsero_email', 'Unknown Kutsero')
+        kutsero_name = f"{kutsero.get('kutsero_fname', '')} {kutsero.get('kutsero_lname', '')}".strip() or kutsero.get('kutsero_email', 'Unknown Kutsero')
+        
+        print(f"🎉 Application created successfully!")
+        print(f"📋 Application ID: {new_application.get('application_id')}")
+        print(f"👤 Owner: {owner_name}")
+        print(f"👤 Kutsero: {kutsero_name}")
+        print(f"🚨 DEBUG apply_to_owner END 🚨")
         
         return Response({
             'success': True,
@@ -5503,7 +5575,7 @@ def apply_to_owner(request):
         }, status=status.HTTP_201_CREATED)
         
     except Exception as e:
-        print(f"ERROR in apply_to_owner: {str(e)}")
+        print(f"💥 CRITICAL ERROR in apply_to_owner: {str(e)}")
         traceback.print_exc()
         return Response({
             'success': False,
@@ -5523,30 +5595,20 @@ def get_my_applications(request):
                 "error": "kutsero_id is required"
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        print(f"DEBUG get_my_applications: kutsero_id={kutsero_id}")
-        
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
         # Get applications for this kutsero
-        applications_response = service_client.table("op_kutsero_application").select(
-            "application_id, op_id, kutsero_id, application_date, status, review_date, review_notes, created_at, updated_at"
-        ).eq("kutsero_id", kutsero_id).execute()
-        
-        print(f"DEBUG: Found {len(applications_response.data or [])} applications")
+        applications_response = service_client.table("op_kutsero_application").select("*").eq("kutsero_id", kutsero_id).execute()
         
         applications = []
         
         for app in applications_response.data or []:
             # Get owner details
-            owner_response = service_client.table("horse_op_profile").select(
-                "op_fname, op_lname, op_email"
-            ).eq("op_id", app['op_id']).execute()
+            owner_response = service_client.table("horse_op_profile").select("*").eq("op_id", app['op_id']).execute()
             
             if owner_response.data:
                 owner = owner_response.data[0]
                 owner_name = f"{owner.get('op_fname', '')} {owner.get('op_lname', '')}".strip()
-                if not owner_name.strip():
-                    owner_name = owner.get('op_email', 'Unknown Owner')
             else:
                 owner_name = "Unknown Owner"
             
