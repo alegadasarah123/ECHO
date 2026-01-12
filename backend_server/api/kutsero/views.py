@@ -5347,7 +5347,7 @@ def get_horse_owners(request):
 @api_view(['POST'])
 def apply_to_owner(request):
     """
-    SIMPLE FIX: Apply to a horse owner - Direct approach
+    SIMPLE FIX: Apply to a horse owner - FIXED JSON RESPONSE
     """
     try:
         data = request.data
@@ -5370,32 +5370,7 @@ def apply_to_owner(request):
         
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
-        # 1. QUICK CHECK: Verify IDs exist in their tables
-        print("🔍 Quick verification...")
-        
-        # Check owner exists
-        try:
-            owner_check = service_client.table("horse_op_profile").select("op_id").eq("op_id", op_id).limit(1).execute()
-            if not owner_check.data:
-                return Response({
-                    'success': False,
-                    'error': 'Horse owner not found'
-                }, status=status.HTTP_404_NOT_FOUND)
-        except:
-            pass  # Skip if check fails
-        
-        # Check kutsero exists
-        try:
-            kutsero_check = service_client.table("kutsero_profile").select("kutsero_id").eq("kutsero_id", kutsero_id).limit(1).execute()
-            if not kutsero_check.data:
-                return Response({
-                    'success': False,
-                    'error': 'Kutsero not found'
-                }, status=status.HTTP_404_NOT_FOUND)
-        except:
-            pass  # Skip if check fails
-        
-        # 2. CHECK FOR EXISTING APPLICATION
+        # 1. Check if application already exists
         print("🔍 Checking existing applications...")
         try:
             existing = service_client.table("op_kutsero_application").select(
@@ -5409,41 +5384,41 @@ def apply_to_owner(request):
                 if status == 'pending':
                     return Response({
                         'success': False,
-                        'error': 'Application already pending'
+                        'error': 'You already have a pending application with this owner'
                     }, status=status.HTTP_400_BAD_REQUEST)
                 elif status == 'approved':
                     return Response({
                         'success': False,
-                        'error': 'Already approved by this owner'
+                        'error': 'You are already approved by this owner'
                     }, status=status.HTTP_400_BAD_REQUEST)
                 elif status == 'rejected':
                     # Delete and continue
                     service_client.table("op_kutsero_application").delete().eq("application_id", app['application_id']).execute()
         except Exception as e:
-            print(f"⚠️ Existing check skipped: {e}")
+            print(f"⚠️ Existing check error: {e}")
         
-        # 3. THE SIMPLE INSERT - ONE TRY ONLY
+        # 2. Create the application
         print("🔄 Creating application...")
         
         application_id = str(uuid.uuid4())
         current_date = datetime.now().date().isoformat()
         current_time = datetime.now().isoformat()
         
-        # Build the data - match your table schema EXACTLY
+        # Build the data
         application_data = {
-            'application_id': application_id,  # UUID for primary key
-            'op_id': op_id,                    # From request
-            'kutsero_id': kutsero_id,          # From request
-            'application_date': current_date,   # Today's date
-            'status': 'pending',               # Default status
-            'created_at': current_time,        # Current timestamp
-            'updated_at': current_time         # Current timestamp
+            'application_id': application_id,
+            'op_id': op_id,
+            'kutsero_id': kutsero_id,
+            'application_date': current_date,
+            'status': 'pending',
+            'created_at': current_time,
+            'updated_at': current_time
         }
         
         print(f"📦 Inserting data: {application_data}")
         
-        # SINGLE INSERT ATTEMPT
         try:
+            # SINGLE INSERT ATTEMPT
             response = service_client.table("op_kutsero_application").insert(application_data).execute()
             
             if response.data:
@@ -5466,57 +5441,35 @@ def apply_to_owner(request):
                 print(f"❌ No data returned from insert")
                 return Response({
                     'success': False,
-                    'error': 'Insert failed - no data returned'
+                    'error': 'Insert failed - no data returned from database'
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 
         except Exception as e:
-            print(f"❌ Insert failed: {str(e)}")
+            print(f"❌ Database insert error: {str(e)}")
             
-            # Try ONE backup method: REST API
-            try:
-                print("🔄 Trying REST API fallback...")
-                
-                url = f"{SUPABASE_URL}/rest/v1/op_kutsero_application"
-                headers = {
-                    "apikey": SUPABASE_SERVICE_ROLE_KEY,
-                    "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-                    "Content-Type": "application/json",
-                    "Prefer": "return=representation"
-                }
-                
-                resp = requests.post(url, json=application_data, headers=headers)
-                print(f"📡 REST API response: {resp.status_code}")
-                
-                if resp.status_code in [200, 201]:
-                    result = resp.json()
-                    if isinstance(result, list) and len(result) > 0:
-                        new_app = result[0]
-                        
-                        return Response({
-                            'success': True,
-                            'message': 'Application submitted (via REST API)',
-                            'application': {
-                                'id': new_app.get('application_id'),
-                                'op_id': new_app.get('op_id'),
-                                'kutsero_id': new_app.get('kutsero_id'),
-                                'status': new_app.get('status'),
-                                'application_date': new_app.get('application_date'),
-                                'created_at': new_app.get('created_at')
-                            }
-                        }, status=status.HTTP_201_CREATED)
-                
+            # Check for specific error types
+            error_msg = str(e)
+            
+            if "duplicate key" in error_msg:
                 return Response({
                     'success': False,
-                    'error': f'Database error: {str(e)}',
-                    'rest_api_error': resp.text if resp.status_code != 200 else 'Unknown'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                
-            except Exception as rest_error:
-                print(f"❌ REST API also failed: {rest_error}")
-                
+                    'error': 'Application already exists'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            elif "foreign key" in error_msg:
                 return Response({
                     'success': False,
-                    'error': f'Failed to create application: {str(e)}'
+                    'error': 'Invalid owner or kutsero ID'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            elif "null value" in error_msg:
+                return Response({
+                    'success': False,
+                    'error': 'Missing required field'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                # Generic database error
+                return Response({
+                    'success': False,
+                    'error': f'Database error: {error_msg[:100]}'
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
     except Exception as e:
@@ -5526,7 +5479,7 @@ def apply_to_owner(request):
         
         return Response({
             'success': False,
-            'error': f'Server error: {str(e)}'
+            'error': f'Server error: {str(e)[:100]}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 @api_view(['GET'])

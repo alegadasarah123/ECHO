@@ -504,19 +504,19 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
 
 const proceedWithApplication = async (owner: HorseOwner) => {
   if (!userData?.profile?.kutsero_id) {
-    Alert.alert("Error", "User information not available")
-    return
+    Alert.alert("Error", "User information not available");
+    return;
   }
 
-  setIsApplying(true)
+  setIsApplying(true);
 
   try {
     const payload = {
       op_id: owner.op_id,
       kutsero_id: userData.profile.kutsero_id
-    }
+    };
 
-    console.log("DEBUG: Sending application", payload)
+    console.log("DEBUG: Sending application", payload);
 
     const response = await fetch(
       `${API_BASE_URL}/apply_to_owner/`,
@@ -527,20 +527,34 @@ const proceedWithApplication = async (owner: HorseOwner) => {
         },
         body: JSON.stringify(payload)
       }
-    )
+    );
 
-    let data
+    // IMPORTANT: Clone the response before reading it
+    const responseClone = response.clone();
+    
+    let data;
     try {
-      data = await response.json()
+      data = await response.json();
     } catch (parseError) {
-      console.log("DEBUG: Failed to parse JSON response")
-      const textResponse = await response.text()
-      console.log("DEBUG: Raw response:", textResponse)
-      throw new Error(`Invalid response from server: ${textResponse}`)
+      console.log("DEBUG: Failed to parse as JSON, trying text");
+      const textResponse = await responseClone.text();
+      console.log("DEBUG: Raw response text:", textResponse);
+      
+      // Try to extract JSON from text if possible
+      try {
+        const jsonMatch = textResponse.match(/\{.*\}/s);
+        if (jsonMatch) {
+          data = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error(`Invalid response: ${textResponse.substring(0, 100)}`);
+        }
+      } catch (e) {
+        throw new Error(`Invalid response format: ${textResponse.substring(0, 100)}`);
+      }
     }
 
-    console.log("DEBUG: Status:", response.status)
-    console.log("DEBUG: Data:", data)
+    console.log("DEBUG: Status:", response.status);
+    console.log("DEBUG: Data:", data);
 
     if (response.ok && data.success) {
       Alert.alert(
@@ -549,22 +563,22 @@ const proceedWithApplication = async (owner: HorseOwner) => {
         [{
           text: "OK",
           onPress: () => {
-            refreshData()
-            setActiveTab("applications")
+            refreshData();
+            setActiveTab("applications");
           }
         }]
-      )
+      );
     } else {
-      let errorMessage = data.error || "Failed to submit application"
+      let errorMessage = data.error || "Failed to submit application";
 
       // Clean up error message
       if (typeof errorMessage === 'string') {
         // Remove Python dictionary formatting if present
         if (errorMessage.includes("'message':")) {
           try {
-            const cleaned = errorMessage.replace(/'/g, '"')
-            const parsed = JSON.parse(cleaned)
-            errorMessage = parsed.message || errorMessage
+            const cleaned = errorMessage.replace(/'/g, '"');
+            const parsed = JSON.parse(cleaned);
+            errorMessage = parsed.message || errorMessage;
           } catch (e) {
             // If parsing fails, extract message manually
             const match = errorMessage.match(/message': '([^']+)'/)
