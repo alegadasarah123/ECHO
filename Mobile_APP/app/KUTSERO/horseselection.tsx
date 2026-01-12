@@ -71,7 +71,6 @@ interface UserData {
   access_token: string
 }
 
-// Interfaces
 interface HorseOwner {
   op_id: string
   name: string
@@ -81,11 +80,15 @@ interface HorseOwner {
   address: string
   image: string
   total_horses: number
+  healthy_horses?: number  // NEW
+  unhealthy_horses?: number  // NEW
+  has_any_horses?: boolean  // NEW
+  has_healthy_horses?: boolean  // NEW
   available_horses: any[]
   has_pending_application: boolean
   is_approved: boolean
+  status_note?: string  // NEW
 }
-
 interface Application {
   application_id: string
   op_id: string
@@ -378,9 +381,21 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
 
     console.log("DEBUG: Loading approved horses with kutsero_id:", kutsero_id)
     
-    // Use the correct endpoint name
+    // First check debug endpoint to see what data exists
+    const debugUrl = `${API_BASE_URL}/debug_horses_data/?kutsero_id=${encodeURIComponent(kutsero_id)}`
+    console.log("DEBUG: Checking debug endpoint:", debugUrl)
+    
+    try {
+      const debugResponse = await fetch(debugUrl)
+      const debugData = await debugResponse.json()
+      console.log("DEBUG: Debug data:", debugData)
+    } catch (debugError) {
+      console.log("DEBUG: Debug endpoint failed:", debugError)
+    }
+    
+    // Now get approved horses
     const url = `${API_BASE_URL}/get_approved_owners_horses/?kutsero_id=${encodeURIComponent(kutsero_id)}`
-    console.log("DEBUG: Trying URL:", url)
+    console.log("DEBUG: Calling approved horses URL:", url)
     
     const response = await fetch(url, {
       method: "GET",
@@ -394,43 +409,31 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
     
     if (response.ok) {
       const data = await response.json()
-      console.log("DEBUG: Full response data:", data)
+      console.log("DEBUG: Approved horses response:", data)
       
       if (data.success) {
         const horses = data.horses || []
-        console.log("SUCCESS: Found", horses.length, "approved horses (before filtering)")
+        console.log("DEBUG: Found", horses.length, "approved horses")
         
-        // Transform horses to match frontend interface AND FILTER OUT DECEASED HORSES
-        const transformedHorses: AvailableHorse[] = horses
-          .filter((horse: any) => {
-            // Filter out deceased horses
-            const horseStatus = horse.status || horse.horse_status || ''
-            const isDeceased = horseStatus.toLowerCase() === 'deceased'
-            
-            if (isDeceased) {
-              console.log(`Filtering out deceased horse: ${horse.name || horse.horse_name}`)
-              return false
-            }
-            return true
-          })
-          .map((horse: any) => ({
-            id: horse.id || horse.horse_id || '',
-            name: horse.name || horse.horse_name || '',
-            breed: horse.breed || horse.horse_breed || 'Unknown',
-            age: horse.age || horse.horse_age || 0,
-            sex: horse.sex || horse.horse_sex || 'Unknown',
-            color: horse.color || horse.horse_color || 'Unknown',
-            image: horse.image || horse.horse_image || '',
-            owner_id: horse.owner_id || '',
-            owner_name: horse.owner_name || 'Unknown Owner',
-            status: horse.status || horse.horse_status || 'available',
-            is_assigned: horse.is_assigned || false,
-            is_assigned_to_me: horse.is_assigned_to_me || false,
-            can_select: horse.can_select !== undefined ? horse.can_select : (!horse.is_assigned || horse.is_assigned_to_me),
-            owner_approved: true
-          }))
+        // Transform horses
+        const transformedHorses: AvailableHorse[] = horses.map((horse: any) => ({
+          id: horse.id || '',
+          name: horse.name || horse.horse_name || 'Unknown Horse',
+          breed: horse.breed || horse.horse_breed || 'Unknown',
+          age: horse.age || horse.horse_age || 0,
+          sex: horse.sex || horse.horse_sex || 'Unknown',
+          color: horse.color || horse.horse_color || 'Unknown',
+          image: horse.image || horse.horse_image || '',
+          owner_id: horse.owner_id || '',
+          owner_name: horse.owner_name || 'Unknown Owner',
+          status: horse.status || horse.horse_status || 'available',
+          is_assigned: horse.is_assigned || false,
+          is_assigned_to_me: horse.is_assigned_to_me || false,
+          can_select: horse.can_select !== undefined ? horse.can_select : (!horse.is_assigned || horse.is_assigned_to_me),
+          owner_approved: true
+        }))
         
-        console.log("AFTER FILTERING: Found", transformedHorses.length, "horses (deceased filtered out)")
+        console.log("DEBUG: Transformed horses:", transformedHorses)
         setApprovedHorses(transformedHorses)
       } else {
         console.log("API returned success false:", data.error || "Unknown error")
@@ -448,7 +451,6 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
     setApprovedHorses([])
   }
 }
-
   const refreshData = async () => {
     if (!userData) {
       console.log("No user data available for refresh")
@@ -500,7 +502,6 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
     )
   }
 
-// In your HorseSelectionScreen, update the proceedWithApplication function:
 const proceedWithApplication = async (owner: HorseOwner) => {
   if (!userData?.profile?.kutsero_id) {
     Alert.alert("Error", "User information not available")
@@ -510,19 +511,12 @@ const proceedWithApplication = async (owner: HorseOwner) => {
   setIsApplying(true)
 
   try {
-    // Log the data being sent
-    console.log("DEBUG [Frontend]: Sending application with:", {
-      kutsero_id: userData.profile.kutsero_id,
-      op_id: owner.op_id,
-      owner_name: owner.full_name
-    })
-
     const payload = {
       op_id: owner.op_id,
       kutsero_id: userData.profile.kutsero_id
     }
 
-    console.log("DEBUG [Frontend]: Full URL:", `${API_BASE_URL}/apply_to_owner/`)
+    console.log("DEBUG: Sending application", payload)
 
     const response = await fetch(
       `${API_BASE_URL}/apply_to_owner/`,
@@ -530,59 +524,55 @@ const proceedWithApplication = async (owner: HorseOwner) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Accept": "application/json"
         },
         body: JSON.stringify(payload)
       }
     )
 
-    console.log("DEBUG [Frontend]: Response status:", response.status)
-    
-    let responseText
-    try {
-      responseText = await response.text()
-      console.log("DEBUG [Frontend]: Raw response:", responseText)
-    } catch (textError) {
-      console.log("DEBUG [Frontend]: Could not read response text")
-      throw new Error("Could not read server response")
-    }
-    
     let data
     try {
-      data = JSON.parse(responseText)
+      data = await response.json()
     } catch (parseError) {
-      console.log("DEBUG [Frontend]: Failed to parse JSON")
-      throw new Error(`Server returned invalid JSON: ${responseText.substring(0, 200)}`)
+      console.log("DEBUG: Failed to parse JSON response")
+      const textResponse = await response.text()
+      console.log("DEBUG: Raw response:", textResponse)
+      throw new Error(`Invalid response from server: ${textResponse}`)
     }
 
-    console.log("DEBUG [Frontend]: Parsed data:", data)
+    console.log("DEBUG: Status:", response.status)
+    console.log("DEBUG: Data:", data)
 
     if (response.ok && data.success) {
       Alert.alert(
         "Application Submitted",
-        `Your application to ${owner.full_name} has been submitted successfully!`,
+        `Your application to ${owner.full_name} has been submitted.`,
         [{
           text: "OK",
           onPress: () => {
-            // Refresh data to show the updated status
             refreshData()
-            // Switch to applications tab
             setActiveTab("applications")
           }
         }]
       )
     } else {
       let errorMessage = data.error || "Failed to submit application"
-      
-      // Provide user-friendly error messages
-      if (errorMessage.includes('already have a pending application')) {
-        errorMessage = "You already have a pending application with this owner."
-      } else if (errorMessage.includes('already approved')) {
-        errorMessage = "You are already approved by this owner. Check your available horses."
-      } else if (errorMessage.includes('not found')) {
-        errorMessage = "Owner or user not found. Please try logging in again."
-      } else if (errorMessage.includes('Database error')) {
-        errorMessage = "System error. Please try again later."
+
+      // Clean up error message
+      if (typeof errorMessage === 'string') {
+        // Remove Python dictionary formatting if present
+        if (errorMessage.includes("'message':")) {
+          try {
+            const cleaned = errorMessage.replace(/'/g, '"')
+            const parsed = JSON.parse(cleaned)
+            errorMessage = parsed.message || errorMessage
+          } catch (e) {
+            // If parsing fails, extract message manually
+            const match = errorMessage.match(/message': '([^']+)'/)
+            if (match && match[1]) {
+              errorMessage = match[1]
+            }
+          }
+        }
       }
 
       Alert.alert("Application Failed", errorMessage)
@@ -590,49 +580,44 @@ const proceedWithApplication = async (owner: HorseOwner) => {
 
   } catch (error: any) {
     console.error("Apply error:", error)
-    let userMessage = error.message || "Failed to submit application."
-    
-    if (error.message.includes('Network')) {
-      userMessage = "Network error. Please check your internet connection."
-    } else if (error.message.includes('JSON')) {
-      userMessage = "Server error. Please try again later."
-    }
-    
-    Alert.alert("Error", userMessage)
+    Alert.alert(
+      "Error",
+      error.message || "Failed to submit application. Please check your connection."
+    )
   } finally {
     setIsApplying(false)
   }
 }
 
 
- const handleSelectHorse = (horse: AvailableHorse) => {
-  if (!userData || !userData.profile?.kutsero_id) {
-    Alert.alert("Error", "User information not available")
-    return
-  }
+  const handleSelectHorse = (horse: AvailableHorse) => {
+    if (!userData || !userData.profile?.kutsero_id) {
+      Alert.alert("Error", "User information not available")
+      return
+    }
 
-  if (!horse.can_select) {
-    Alert.alert("Horse Unavailable", "This horse is already assigned to you or another kutsero.")
-    return
-  }
+    if (!horse.can_select) {
+      Alert.alert("Horse Unavailable", "This horse is already assigned to you or another kutsero.")
+      return
+    }
 
-  if (!horse.owner_approved) {
-    Alert.alert("Owner Not Approved", "You need to be approved by this horse's owner first.")
-    return
-  }
+    if (!horse.owner_approved) {
+      Alert.alert("Owner Not Approved", "You need to be approved by this horse's owner first.")
+      return
+    }
 
-  Alert.alert(
-    "Assign Horse",
-    `Do you want to assign ${horse.name} to yourself?\n\nNote: You will need to check in with this horse on the dashboard before starting work.`,
-    [
-      { text: "Cancel", style: "cancel" },
-      { 
-        text: "Assign", 
-        onPress: () => assignHorseToKutsero(horse) 
-      }
-    ]
-  )
-}
+    Alert.alert(
+      "Assign Horse",
+      `Do you want to assign ${horse.name} to yourself for work?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Assign", 
+          onPress: () => assignHorseToKutsero(horse) 
+        }
+      ]
+    )
+  }
 
 const assignHorseToKutsero = async (horse: AvailableHorse) => {
   if (!userData || !userData.profile?.kutsero_id) {
@@ -648,13 +633,14 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
       kutsero_id: userData.profile.kutsero_id
     })
     
-    const url = `${API_BASE_URL}/assign_horse_to_kutsero/`
+    const url = `${API_BASE_URL}/assign_horse/`
     console.log("DEBUG: Calling URL:", url)
     
+    // Ensure all IDs are strings (not numbers)
     const payload = {
-      horse_id: horse.id,
-      op_id: horse.owner_id,
-      kutsero_id: userData.profile.kutsero_id,
+      horse_id: String(horse.id),
+      op_id: String(horse.owner_id),
+      kutsero_id: String(userData.profile.kutsero_id),
       date_start: new Date().toISOString()
     }
     
@@ -668,43 +654,39 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
       body: JSON.stringify(payload)
     })
     
-    // First, check what type of response we got
-    const contentType = response.headers.get('content-type')
-    console.log("DEBUG: Response status:", response.status)
-    console.log("DEBUG: Content-Type:", contentType)
-    
-    let responseText = await response.text()
-    console.log("DEBUG: Raw response (first 500 chars):", responseText.substring(0, 500))
+    const responseText = await response.text()
+    console.log("DEBUG: Raw response:", responseText)
     
     let data
     try {
       data = JSON.parse(responseText)
     } catch (parseError) {
       console.log("DEBUG: Failed to parse as JSON")
-      if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
-        console.log("DEBUG: Server returned HTML instead of JSON")
-        // Extract any error message from HTML if possible
-        const errorMatch = responseText.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i) || 
-                           responseText.match(/<body[^>]*>([\s\S]*?)<\/body>/i) ||
-                           responseText.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)
-        
-        throw new Error(`Server error (HTML response). Status: ${response.status}. ${errorMatch ? 'Message: ' + errorMatch[1].substring(0, 100) : ''}`)
-      }
       throw new Error(`Invalid response from server: ${responseText.substring(0, 100)}`)
     }
     
     console.log("DEBUG: Parsed response data:", data)
     
     if (response.ok && data.success) {
-      Alert.alert("Success", data.message, [
-        {
-          text: "OK",
-          onPress: () => {
-            // Go back to previous screen
-            router.back()
+      // Show check-in option after successful assignment
+      Alert.alert(
+        "Horse Assigned!",
+        `${horse.name} has been assigned to you. Would you like to check in now?`,
+        [
+          {
+            text: "Check In Now",
+            onPress: async () => {
+              await handleCheckInAfterAssignment(horse)
+            }
+          },
+          {
+            text: "Check In Later",
+            onPress: () => {
+              router.back()
+            }
           }
-        }
-      ])
+        ]
+      )
     } else {
       Alert.alert(
         "Assignment Failed",
@@ -720,6 +702,34 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
     )
   } finally {
     setIsAssigning(false)
+  }
+}
+
+// Add this new function for check-in after assignment
+const handleCheckInAfterAssignment = async (horse: AvailableHorse) => {
+  try {
+    const currentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    await SecureStore.setItemAsync(
+      "checkInData",
+      JSON.stringify({
+        horseId: horse.id,
+        horseName: horse.name,
+        checkInTime: currentTime,
+        timestamp: Date.now(),
+      })
+    )
+    
+    Alert.alert(
+      "Checked In!",
+      `You have checked in with ${horse.name} at ${currentTime}`,
+      [{
+        text: "OK",
+        onPress: () => router.back()
+      }]
+    )
+  } catch (error) {
+    Alert.alert("Error", "Failed to check in. Please try again from the dashboard.")
+    router.back()
   }
 }
 
@@ -760,79 +770,101 @@ const assignHorseToKutsero = async (horse: AvailableHorse) => {
     horse.owner_name.toLowerCase().includes(searchText.toLowerCase())
   )
 
-  // Render Owner List Item
-  const renderOwnerItem = ({ item }: { item: HorseOwner }) => (
-    <TouchableOpacity
-      style={styles.ownerCard}
-      onPress={() => {
-        setSelectedOwnerForDetail(item)
-        setOwnerDetailModal(true)
-      }}
-      activeOpacity={0.7}
-    >
-      <View style={styles.ownerHeader}>
-        {item.image ? (
-          <Image 
-            source={{ uri: cleanImageUrl(item.image) }} 
-            style={styles.ownerAvatar}
-            onError={(e) => console.log("Failed to load owner image:", e.nativeEvent.error)}
-          />
-        ) : (
-          <View style={styles.ownerAvatarPlaceholder}>
-            <Text style={styles.ownerInitials}>
-              {item.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-            </Text>
-          </View>
-        )}
-        
-        <View style={styles.ownerInfo}>
-          <Text style={styles.ownerName}>{item.full_name}</Text>
-          <Text style={styles.ownerHorsesCount}>
-            {item.total_horses} horse{item.total_horses !== 1 ? 's' : ''}
+// Render Owner List Item
+const renderOwnerItem = ({ item }: { item: HorseOwner }) => (
+  <TouchableOpacity
+    style={styles.ownerCard}
+    onPress={() => {
+      setSelectedOwnerForDetail(item)
+      setOwnerDetailModal(true)
+    }}
+    activeOpacity={0.7}
+  >
+    <View style={styles.ownerHeader}>
+      {item.image ? (
+        <Image 
+          source={{ uri: cleanImageUrl(item.image) }} 
+          style={styles.ownerAvatar}
+          onError={(e) => console.log("Failed to load owner image:", e.nativeEvent.error)}
+        />
+      ) : (
+        <View style={styles.ownerAvatarPlaceholder}>
+          <Text style={styles.ownerInitials}>
+            {item.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
           </Text>
-          {item.phone ? (
-            <Text style={styles.ownerContact}>{item.phone}</Text>
-          ) : null}
         </View>
-        
-        <View style={styles.ownerActions}>
-          {item.is_approved ? (
-            <View style={styles.approvedBadge}>
-              <FontAwesome name="check" size={14} color="white" />
-              <Text style={styles.approvedText}>Approved</Text>
-            </View>
-          ) : item.has_pending_application ? (
-            <View style={styles.pendingBadge}>
-              <MaterialIcons name="schedule" size={14} color="white" />
-              <Text style={styles.pendingText}>Pending</Text>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.applyButton}
-              onPress={() => handleApplyToOwner(item)}
-              disabled={isApplying}
-            >
-              <Text style={styles.applyButtonText}>
-                {isApplying ? '...' : 'Apply'}
-              </Text>
-            </TouchableOpacity>
+      )}
+      
+      <View style={styles.ownerInfo}>
+        <Text style={styles.ownerName}>{item.full_name}</Text>
+        <Text style={styles.ownerHorsesCount}>
+          {item.total_horses} total horse{item.total_horses !== 1 ? 's' : ''}
+          {item.healthy_horses !== undefined && (
+            <Text style={item.healthy_horses > 0 ? styles.healthyHorsesText : styles.noHealthyHorsesText}>
+              {" "}({item.healthy_horses} healthy)
+            </Text>
           )}
-        </View>
+        </Text>
+        {item.phone ? (
+          <Text style={styles.ownerContact}>{item.phone}</Text>
+        ) : null}
+        
+        {/* Show status note if available */}
+        {item.status_note && (
+          <Text style={styles.statusNote}>
+            <MaterialIcons name="info" size={12} color="#666" /> {item.status_note}
+          </Text>
+        )}
       </View>
       
-      <View style={styles.ownerFooter}>
-        {item.address ? (
-          <Text style={styles.ownerAddress} numberOfLines={1}>
-            <MaterialIcons name="location-on" size={12} color="#666" /> {item.address}
-          </Text>
+      <View style={styles.ownerActions}>
+        {item.is_approved ? (
+          <View style={styles.approvedBadge}>
+            <FontAwesome name="check" size={14} color="white" />
+            <Text style={styles.approvedText}>Approved</Text>
+          </View>
+        ) : item.has_pending_application ? (
+          <View style={styles.pendingBadge}>
+            <MaterialIcons name="schedule" size={14} color="white" />
+            <Text style={styles.pendingText}>Pending</Text>
+          </View>
         ) : (
-          <Text style={styles.ownerAddress} numberOfLines={1}>
-            <MaterialIcons name="location-on" size={12} color="#666" /> Address not available
-          </Text>
+          <TouchableOpacity
+            style={[
+              styles.applyButton,
+              (!item.has_any_horses || item.healthy_horses === 0) && styles.applyButtonDisabled
+            ]}
+            onPress={() => handleApplyToOwner(item)}
+            disabled={isApplying || (!item.has_any_horses || item.healthy_horses === 0)}
+          >
+            <Text style={styles.applyButtonText}>
+              {isApplying ? '...' : 'Apply'}
+            </Text>
+          </TouchableOpacity>
         )}
       </View>
-    </TouchableOpacity>
-  )
+    </View>
+    
+    <View style={styles.ownerFooter}>
+      {item.address ? (
+        <Text style={styles.ownerAddress} numberOfLines={1}>
+          <MaterialIcons name="location-on" size={12} color="#666" /> {item.address}
+        </Text>
+      ) : (
+        <Text style={styles.ownerAddress} numberOfLines={1}>
+          <MaterialIcons name="location-on" size={12} color="#666" /> Address not available
+        </Text>
+      )}
+      
+      {/* Warning if no healthy horses */}
+      {item.has_any_horses && item.healthy_horses === 0 && (
+        <Text style={styles.warningText}>
+          ⚠️ No healthy horses available from this owner
+        </Text>
+      )}
+    </View>
+  </TouchableOpacity>
+)
 
   // Render Application List Item
   const renderApplicationItem = ({ item }: { item: Application }) => (
@@ -966,62 +998,61 @@ const renderHorseItem = ({ item }: { item: AvailableHorse }) => (
   </TouchableOpacity>
 )
 
-  const renderEmptyState = (type: 'owners' | 'applications' | 'horses') => {
-    const config = {
-      owners: {
-        icon: 'people',
-        title: 'No horse owners found',
-        message: searchText 
-          ? 'Try adjusting your search terms' 
-          : 'No horse owners available'
-      },
-      applications: {
-        icon: 'description',
-        title: 'No applications found',
-        message: 'You have not applied to any horse owners yet'
-      },
-      horses: {
-        icon: 'pets',
-        title: approvedHorses.length === 0 && myApplications.filter(app => app.status === 'approved').length === 0
-          ? 'No approved owners yet'
-          : 'No horses available',
-        message: approvedHorses.length === 0 && myApplications.filter(app => app.status === 'approved').length === 0
-          ? 'You need to be approved by horse owners first'
-          : searchText
-            ? 'No matching horses found'
-            : 'No horses available from your approved owners'
-      }
+ const renderEmptyState = (type: 'owners' | 'applications' | 'horses') => {
+  const config = {
+    owners: {
+      icon: 'people',
+      title: 'No horse owners found',
+      message: searchText 
+        ? 'Try adjusting your search terms' 
+        : 'No horse owners with healthy horses available'
+    },
+    applications: {
+      icon: 'description',
+      title: 'No applications found',
+      message: 'You have not applied to any horse owners yet'
+    },
+    horses: {
+      icon: 'pets',
+      title: approvedHorses.length === 0 && myApplications.filter(app => app.status === 'approved').length === 0
+        ? 'No approved owners yet'
+        : 'No healthy horses available',
+      message: approvedHorses.length === 0 && myApplications.filter(app => app.status === 'approved').length === 0
+        ? 'You need to be approved by horse owners first. Apply to owners in the Owners tab.'
+        : searchText
+          ? 'No matching healthy horses found'
+          : 'No healthy horses available from your approved owners. Horses may be sick, injured, or already assigned.'
     }
-
-    const { icon, title, message } = config[type]
-
-    return (
-      <View style={styles.emptyState}>
-        <MaterialIcons name={icon as any} size={60} color="#ccc" />
-        <Text style={styles.emptyStateText}>{title}</Text>
-        <Text style={styles.emptyStateSubtext}>{message}</Text>
-        
-        {type === 'horses' && myApplications.filter(app => app.status === 'approved').length === 0 && (
-          <TouchableOpacity
-            style={styles.browseOwnersButton}
-            onPress={() => setActiveTab('owners')}
-          >
-            <Text style={styles.browseOwnersButtonText}>Browse Owners to Apply</Text>
-          </TouchableOpacity>
-        )}
-        
-        {type === 'horses' && myApplications.filter(app => app.status === 'approved').length > 0 && approvedHorses.length === 0 && (
-          <TouchableOpacity
-            style={styles.browseOwnersButton}
-            onPress={() => refreshData()}
-          >
-            <Text style={styles.browseOwnersButtonText}>Refresh Horses List</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    )
   }
 
+  const { icon, title, message } = config[type]
+
+  return (
+    <View style={styles.emptyState}>
+      <MaterialIcons name={icon as any} size={60} color="#ccc" />
+      <Text style={styles.emptyStateText}>{title}</Text>
+      <Text style={styles.emptyStateSubtext}>{message}</Text>
+      
+      {type === 'horses' && myApplications.filter(app => app.status === 'approved').length === 0 && (
+        <TouchableOpacity
+          style={styles.browseOwnersButton}
+          onPress={() => setActiveTab('owners')}
+        >
+          <Text style={styles.browseOwnersButtonText}>Browse Owners to Apply</Text>
+        </TouchableOpacity>
+      )}
+      
+      {type === 'horses' && myApplications.filter(app => app.status === 'approved').length > 0 && approvedHorses.length === 0 && (
+        <View style={styles.hintContainer}>
+          <Text style={styles.hintText}>
+            <MaterialIcons name="info" size={16} color="#666" /> 
+            Only healthy, available horses are shown. Check back later or contact owners directly.
+          </Text>
+        </View>
+      )}
+    </View>
+  )
+}
   const renderContent = () => {
     if (connectionError) {
       return (
@@ -2007,4 +2038,42 @@ const styles = StyleSheet.create({
     color: '#333',
     marginTop: verticalScale(12),
   },
+
+  hintContainer: {
+  marginTop: verticalScale(16),
+  padding: scale(12),
+  backgroundColor: '#f0f0f0',
+  borderRadius: scale(8),
+  alignItems: 'center',
+},
+hintText: {
+  fontSize: moderateScale(12),
+  color: '#666',
+  textAlign: 'center',
+},
+healthyHorsesText: {
+  fontSize: moderateScale(11),
+  color: '#4CAF50',
+  fontWeight: '500',
+},
+noHealthyHorsesText: {
+  fontSize: moderateScale(11),
+  color: '#F44336',
+  fontWeight: '500',
+},
+statusNote: {
+  fontSize: moderateScale(10),
+  color: '#666',
+  marginTop: verticalScale(2),
+},
+applyButtonDisabled: {
+  backgroundColor: '#CCCCCC',
+  opacity: 0.6,
+},
+warningText: {
+  fontSize: moderateScale(10),
+  color: '#FF9800',
+  marginTop: verticalScale(4),
+  fontStyle: 'italic',
+},
 })
