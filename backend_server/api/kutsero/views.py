@@ -5347,7 +5347,7 @@ def get_horse_owners(request):
 @api_view(['POST'])
 def apply_to_owner(request):
     """
-    Apply to a horse owner for horse usage - FIXED VERSION
+    Apply to a horse owner for horse usage - Accepts both integer and UUID IDs
     """
     try:
         data = request.data
@@ -5355,10 +5355,8 @@ def apply_to_owner(request):
         op_id = data.get('op_id')
         
         print(f"🔄 apply_to_owner called with:")
-        print(f"  kutsero_id: {kutsero_id}")
-        print(f"  op_id: {op_id}")
-        print(f"  kutsero_id type: {type(kutsero_id)}")
-        print(f"  op_id type: {type(op_id)}")
+        print(f"  kutsero_id: {kutsero_id} (type: {type(kutsero_id)})")
+        print(f"  op_id: {op_id} (type: {type(op_id)})")
         
         if not kutsero_id or not op_id:
             return Response({
@@ -5366,67 +5364,85 @@ def apply_to_owner(request):
                 'error': 'kutsero_id and op_id are required'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Clean and validate the IDs
-        kutsero_id = str(kutsero_id).strip()
-        op_id = str(op_id).strip()
-        
-        # Validate they look like UUIDs
-        import re
-        uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
-        
-        if not uuid_pattern.match(kutsero_id):
-            print(f"❌ Invalid kutsero_id format: {kutsero_id}")
-            return Response({
-                'success': False,
-                'error': f'Invalid kutsero_id format: {kutsero_id}'
-            }, status=status.HTTP_400_BAD_REQUEST)
-            
-        if not uuid_pattern.match(op_id):
-            print(f"❌ Invalid op_id format: {op_id}")
-            return Response({
-                'success': False,
-                'error': f'Invalid op_id format: {op_id}'
-            }, status=status.HTTP_400_BAD_REQUEST)
+        # Clean the IDs
+        kutsero_id_str = str(kutsero_id).strip()
+        op_id_str = str(op_id).strip()
         
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
-        # 1. Check if owner exists
-        print(f"🔍 Checking owner: {op_id}")
-        owner_response = service_client.table("horse_op_profile").select(
-            "op_id, op_fname, op_lname, op_email"
-        ).eq("op_id", op_id).execute()
+        # 1. Check if owner exists - try different approaches
+        print(f"🔍 Checking owner with ID: {op_id_str}")
         
-        if not owner_response.data:
-            print(f"❌ Owner not found")
+        # Try to find owner by UUID first
+        owner_response = None
+        try:
+            # Check if it looks like a UUID
+            import re
+            uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+            
+            if uuid_pattern.match(op_id_str):
+                # It's a UUID, search directly
+                owner_response = service_client.table("horse_op_profile").select(
+                    "op_id, op_fname, op_lname, op_email"
+                ).eq("op_id", op_id_str).execute()
+            else:
+                # It might be an integer, try to find by other means
+                # First, check if it's a primary key or some other ID
+                owner_response = service_client.table("horse_op_profile").select(
+                    "op_id, op_fname, op_lname, op_email, id"
+                ).or_(f"id.eq.{op_id_str},op_id.eq.{op_id_str}").execute()
+                
+        except Exception as e:
+            print(f"⚠️ Error checking owner: {e}")
+        
+        if not owner_response or not owner_response.data:
+            print(f"❌ Owner not found with ID: {op_id_str}")
             return Response({
                 'success': False,
-                'error': 'Owner not found'
+                'error': f'Owner not found with ID: {op_id_str}'
             }, status=status.HTTP_404_NOT_FOUND)
         
         owner = owner_response.data[0]
+        actual_op_id = owner.get('op_id')  # Get the actual UUID from database
+        
         print(f"✅ Owner found: {owner.get('op_fname')} {owner.get('op_lname')}")
+        print(f"   Actual op_id from DB: {actual_op_id}")
         
-        # 2. Check if kutsero exists
-        print(f"🔍 Checking kutsero: {kutsero_id}")
-        kutsero_response = service_client.table("kutsero_profile").select(
-            "kutsero_id, kutsero_fname, kutsero_lname, kutsero_email"
-        ).eq("kutsero_id", kutsero_id).execute()
+        # 2. Check if kutsero exists - similar flexible approach
+        print(f"🔍 Checking kutsero with ID: {kutsero_id_str}")
         
-        if not kutsero_response.data:
-            print(f"❌ Kutsero not found")
+        kutsero_response = None
+        try:
+            if uuid_pattern.match(kutsero_id_str):
+                kutsero_response = service_client.table("kutsero_profile").select(
+                    "kutsero_id, kutsero_fname, kutsero_lname, kutsero_email"
+                ).eq("kutsero_id", kutsero_id_str).execute()
+            else:
+                kutsero_response = service_client.table("kutsero_profile").select(
+                    "kutsero_id, kutsero_fname, kutsero_lname, kutsero_email, id"
+                ).or_(f"id.eq.{kutsero_id_str},kutsero_id.eq.{kutsero_id_str}").execute()
+                
+        except Exception as e:
+            print(f"⚠️ Error checking kutsero: {e}")
+        
+        if not kutsero_response or not kutsero_response.data:
+            print(f"❌ Kutsero not found with ID: {kutsero_id_str}")
             return Response({
                 'success': False,
-                'error': 'Kutsero not found'
+                'error': f'Kutsero not found with ID: {kutsero_id_str}'
             }, status=status.HTTP_404_NOT_FOUND)
         
         kutsero = kutsero_response.data[0]
-        print(f"✅ Kutsero found: {kutsero.get('kutsero_fname')} {kutsero.get('kutsero_lname')}")
+        actual_kutsero_id = kutsero.get('kutsero_id')  # Get the actual UUID from database
         
-        # 3. Check for existing application
+        print(f"✅ Kutsero found: {kutsero.get('kutsero_fname')} {kutsero.get('kutsero_lname')}")
+        print(f"   Actual kutsero_id from DB: {actual_kutsero_id}")
+        
+        # 3. Check for existing application (using actual UUIDs from DB)
         print(f"🔍 Checking existing applications...")
         existing_app_response = service_client.table("op_kutsero_application").select(
             "*"
-        ).eq("op_id", op_id).eq("kutsero_id", kutsero_id).execute()
+        ).eq("op_id", actual_op_id).eq("kutsero_id", actual_kutsero_id).execute()
         
         if existing_app_response.data:
             existing_app = existing_app_response.data[0]
@@ -5449,125 +5465,157 @@ def apply_to_owner(request):
                 ).execute()
                 print(f"✅ Rejected application deleted")
         
-        # 4. CREATE APPLICATION - Using UUIDs directly
+        # 4. CREATE APPLICATION - using actual UUIDs from database
         print(f"🔄 Creating new application...")
         
-        # Prepare application data - ensure UUIDs are strings
+        # Prepare application data
         application_id = str(uuid.uuid4())
         current_time = datetime.now().isoformat()
         current_date = datetime.now().date().isoformat()
         
-        application_data = {
+        # First, let's check what the table expects
+        print("🔍 Checking table structure...")
+        
+        # Try multiple approaches for the insert
+        success = False
+        new_application = None
+        
+        # Approach 1: Try with UUIDs
+        application_data_uuid = {
             'application_id': application_id,
-            'op_id': op_id,  # Already validated as UUID string
-            'kutsero_id': kutsero_id,  # Already validated as UUID string
+            'op_id': actual_op_id,  # Actual UUID from DB
+            'kutsero_id': actual_kutsero_id,  # Actual UUID from DB
             'application_date': current_date,
             'status': 'pending',
             'created_at': current_time,
             'updated_at': current_time
         }
         
-        print(f"📦 Application data to insert:")
-        print(f"  application_id: {application_id}")
-        print(f"  op_id: {op_id}")
-        print(f"  kutsero_id: {kutsero_id}")
+        # Approach 2: Try with original IDs (might be integers)
+        application_data_original = {
+            'application_id': application_id,
+            'op_id': op_id_str,  # Original ID from request
+            'kutsero_id': kutsero_id_str,  # Original ID from request
+            'application_date': current_date,
+            'status': 'pending',
+            'created_at': current_time,
+            'updated_at': current_time
+        }
         
-        # Method 1: Try direct supabase client insert
+        # Approach 3: Try without explicit IDs (let DB auto-generate)
+        application_data_minimal = {
+            'application_id': application_id,
+            'application_date': current_date,
+            'status': 'pending',
+            'created_at': current_time,
+            'updated_at': current_time
+        }
+        # Only add IDs if they're valid
         try:
-            print("🔧 Trying Method 1: Direct supabase insert...")
-            insert_response = service_client.table("op_kutsero_application").insert(application_data).execute()
-            
-            if insert_response.data:
-                print(f"✅ Method 1 SUCCESS!")
-                new_application = insert_response.data[0]
-            else:
-                raise Exception("No data returned from insert")
+            if actual_op_id:
+                application_data_minimal['op_id'] = actual_op_id
+            if actual_kutsero_id:
+                application_data_minimal['kutsero_id'] = actual_kutsero_id
+        except:
+            pass
+        
+        # Try different insertion methods
+        insertion_methods = [
+            ("UUID approach", application_data_uuid),
+            ("Original ID approach", application_data_original),
+            ("Minimal approach", application_data_minimal)
+        ]
+        
+        for method_name, app_data in insertion_methods:
+            if success:
+                break
                 
-        except Exception as e1:
-            print(f"❌ Method 1 failed: {str(e1)}")
+            print(f"🔧 Trying {method_name}...")
+            print(f"  Data: {app_data}")
             
-            # Try Method 2: REST API
             try:
-                print("🔧 Trying Method 2: REST API...")
+                insert_response = service_client.table("op_kutsero_application").insert(app_data).execute()
                 
-                insert_url = f"{SUPABASE_URL}/rest/v1/op_kutsero_application"
+                if insert_response.data:
+                    print(f"✅ {method_name} SUCCESS!")
+                    new_application = insert_response.data[0]
+                    success = True
+                    break
+                else:
+                    print(f"❌ {method_name} returned no data")
+                    
+            except Exception as e:
+                print(f"❌ {method_name} failed: {str(e)[:100]}")
+        
+        # If all direct methods fail, try REST API
+        if not success:
+            print("🔄 Trying REST API approach...")
+            
+            # First, check what columns the table actually has
+            try:
+                check_url = f"{SUPABASE_URL}/rest/v1/op_kutsero_application"
                 headers = {
                     "apikey": SUPABASE_SERVICE_ROLE_KEY,
                     "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
                     "Content-Type": "application/json",
-                    "Prefer": "return=representation"
+                    "Prefer": "return=minimal"
                 }
                 
-                print(f"🌐 Calling REST API...")
-                response = requests.post(insert_url, json=application_data, headers=headers)
-                
-                print(f"📡 Response status: {response.status_code}")
-                print(f"📡 Response text: {response.text}")
-                
-                if response.status_code in [200, 201]:
-                    result = response.json()
-                    new_application = result[0] if isinstance(result, list) else result
-                    print(f"✅ Method 2 SUCCESS!")
+                # Try to get one row to see structure
+                check_response = requests.get(check_url + "?limit=1", headers=headers)
+                if check_response.status_code == 200 and check_response.json():
+                    sample_row = check_response.json()[0]
+                    print(f"📋 Table columns: {list(sample_row.keys())}")
+                    
+                    # Build data matching actual columns
+                    smart_data = {}
+                    for key in sample_row.keys():
+                        if key == 'op_id':
+                            smart_data[key] = actual_op_id or op_id_str
+                        elif key == 'kutsero_id':
+                            smart_data[key] = actual_kutsero_id or kutsero_id_str
+                        elif key == 'application_date':
+                            smart_data[key] = current_date
+                        elif key == 'status':
+                            smart_data[key] = 'pending'
+                        elif key == 'created_at':
+                            smart_data[key] = current_time
+                        elif key == 'updated_at':
+                            smart_data[key] = current_time
+                        elif key in ['application_id', 'id']:
+                            smart_data[key] = application_id
+                    
+                    print(f"📦 Smart data for REST API: {smart_data}")
+                    
+                    response = requests.post(check_url, json=smart_data, headers={
+                        **headers,
+                        "Prefer": "return=representation"
+                    })
+                    
+                    if response.status_code in [200, 201, 204]:
+                        result = response.json()
+                        if result:
+                            new_application = result[0] if isinstance(result, list) else result
+                            success = True
+                            print(f"✅ REST API SUCCESS!")
+                        else:
+                            # For 204 No Content, create a dummy response
+                            new_application = smart_data
+                            success = True
+                            print(f"✅ REST API SUCCESS (204 No Content)")
+                    else:
+                        print(f"❌ REST API failed: {response.status_code} - {response.text}")
                 else:
-                    # Try to parse the error
-                    error_text = response.text
-                    print(f"❌ REST API error: {error_text}")
+                    print(f"❌ Could not get table structure")
                     
-                    # If it's a "column does not exist" error, check the actual column names
-                    if "column" in error_text.lower() and "does not exist" in error_text.lower():
-                        # Let's check the actual table schema
-                        print("🔄 Checking table schema...")
-                        schema_url = f"{SUPABASE_URL}/rest/v1/op_kutsero_application"
-                        schema_headers = {
-                            "apikey": SUPABASE_SERVICE_ROLE_KEY,
-                            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-                        }
-                        schema_response = requests.get(schema_url + "?limit=1", headers=schema_headers)
-                        if schema_response.status_code == 200:
-                            sample_data = schema_response.json()
-                            if sample_data and len(sample_data) > 0:
-                                print(f"📋 Actual table columns: {list(sample_data[0].keys())}")
-                                
-                                # Check what columns exist and create adjusted data
-                                adjusted_data = {}
-                                for key, value in application_data.items():
-                                    if key in sample_data[0]:
-                                        adjusted_data[key] = value
-                                    else:
-                                        # Try alternative column names
-                                        if key == "application_id":
-                                            alt_key = "id"
-                                        elif key == "op_id":
-                                            alt_key = "operator_id"
-                                        elif key == "kutsero_id":
-                                            alt_key = "kutsero_user_id"
-                                        else:
-                                            alt_key = key
-                                        
-                                        if alt_key in sample_data[0]:
-                                            adjusted_data[alt_key] = value
-                                            print(f"  Using {alt_key} instead of {key}")
-                                
-                                if adjusted_data:
-                                    print(f"📦 Adjusted data: {adjusted_data}")
-                                    retry_response = requests.post(insert_url, json=adjusted_data, headers=headers)
-                                    if retry_response.status_code in [200, 201]:
-                                        result = retry_response.json()
-                                        new_application = result[0] if isinstance(result, list) else result
-                                        print(f"✅ Adjusted insert SUCCESS!")
-                                    else:
-                                        raise Exception(f"Adjusted insert failed: {retry_response.text}")
-                                else:
-                                    raise Exception(f"No matching columns found. Available columns: {list(sample_data[0].keys())}")
-                        
-                    raise Exception(f"REST API error: {error_text}")
-                    
-            except Exception as e2:
-                print(f"❌ All methods failed: {str(e2)}")
-                return Response({
-                    'success': False,
-                    'error': f'Failed to create application: {str(e2)}'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            except Exception as e:
+                print(f"❌ REST API approach failed: {e}")
+        
+        if not success or not new_application:
+            return Response({
+                'success': False,
+                'error': 'Failed to create application. Database insert failed.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         # 5. SUCCESS RESPONSE
         owner_name = f"{owner.get('op_fname', '')} {owner.get('op_lname', '')}".strip()
@@ -5575,13 +5623,12 @@ def apply_to_owner(request):
             owner_name = owner.get('op_email', 'Unknown Owner')
         
         print(f"🎉 Application created successfully!")
-        print(f"📋 ID: {new_application.get('application_id')}")
         
         return Response({
             'success': True,
             'message': f'Application submitted to {owner_name} successfully',
             'application': {
-                'id': new_application.get('application_id'),
+                'id': new_application.get('application_id') or new_application.get('id'),
                 'op_id': new_application.get('op_id'),
                 'kutsero_id': new_application.get('kutsero_id'),
                 'owner_name': owner_name,
