@@ -1,4 +1,4 @@
-"use client"
+
 
 import Sidebar from "@/components/CtuSidebar"
 import { AlertTriangle, Bell, CheckCircle, ClipboardList, Clock, ExternalLink, Eye, MapPin, Phone, RefreshCw, User, X, XCircle } from "lucide-react"
@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://localhost:8000/api/ctu_vetmed";
+const API_BASE = "http://localhost:8000/api/ctu-vetmed"
 
 function CtuDashboard() {
   const navigate = useNavigate()
@@ -222,7 +222,7 @@ function CtuDashboard() {
 
   const loadNotifications = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/get_vetnotifications/`, {
+      const response = await  fetch("http://localhost:8000/api/ctu_vetmed/get_vetnotifications/", {
         method: "GET",
         credentials: "include",
       })

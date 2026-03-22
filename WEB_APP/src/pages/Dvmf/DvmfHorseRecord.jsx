@@ -325,9 +325,8 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
     const pdf = new jsPDF();
     const { horse, medicalRecord, treatmentHistory } = data;
 
-    const logoLeft = "/Images/dvmf.png";   // ✅ Your CTU logo
+    const logoLeft = "/Images/dvmf.png";
 
-    // ✅ Convert image to BASE64
     const getBase64Image = (url) =>
       new Promise((resolve) => {
         const img = new Image();
@@ -348,17 +347,12 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
 
     pdf.setFont("helvetica");
 
-    // ✅ =============================
-    // ✅ NEW CTU HEADER DESIGN
-    // ✅ =============================
     let y = 15;
 
-    // Add CTU Logo
     if (baseLogo) {
       pdf.addImage(baseLogo, "PNG", 10, 8,  50, 45);
     }
 
-    // Header text layout
     pdf.setFontSize(10);
     pdf.setFont("helvetica", "normal");
     pdf.text("Republic of the Philippines", 105, y + 2, { align: "center" });
@@ -381,7 +375,6 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
       { align: "center" }
     );
 
-    // Record title
     pdf.setFontSize(13);
     pdf.setFont("helvetica", "bold");
     pdf.text(
@@ -391,18 +384,14 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
       { align: "center" }
     );
 
-    // Divider line
     pdf.setDrawColor(0);
     pdf.line(15, y + 38, 195, y + 38);
 
-    // ✅ NEW CLEAN SPACING BELOW HEADER
-    let yPosition = y + 65;   // ✅ improved spacing
+    let yPosition = y + 65;
 
-    // ✅ Color config
     const primaryColor = [0, 0, 0];
     const darkColor = [50, 50, 50];
 
-    // ✅ Helpers ------------------------------------------
     const parseLabImages = (labImgData) => {
       if (!labImgData) return [];
       try {
@@ -498,9 +487,6 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
       yPosition += 5;
     };
 
-    // ✅ =============================
-    // ✅ MAIN MEDICAL CONTENT
-    // ✅ =============================
     if (type === "medical") {
       addSection("Horse Information");
       addKeyValue("Name", horse?.horse_name);
@@ -562,9 +548,6 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
       }
     }
 
-    // ✅ =============================
-    // ✅ TREATMENT RECORD CONTENT
-    // ✅ =============================
     else {
       addSection("Horse Information");
       addKeyValue("Name", horse?.horse_name);
@@ -614,7 +597,6 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
       addKeyValue("Remarks", tData.treatment_remark);
     }
 
-    // ✅ Footer for all pages
     const pageCount = pdf.internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
       pdf.setPage(i);
@@ -631,7 +613,6 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
     return false;
   }
 };
-
 
 // Enhanced Medical Record with Followups Component
 const MedicalRecordWithFollowups = ({ record, horse, onViewMedicalRecord }) => {
@@ -713,7 +694,8 @@ const MedicalRecordWithFollowups = ({ record, horse, onViewMedicalRecord }) => {
         
         <div className="flex items-center">
           <span className={`inline-flex items-center py-1.5 px-3 rounded-full text-xs font-semibold transition-all duration-200 ${
-            record.medrec_horsestatus?.toLowerCase() === "healthy" 
+            record.medrec_horsestatus?.toLowerCase() === "healthy" || 
+            record.medrec_horsestatus?.toLowerCase() === "assigned"
               ? "bg-green-100 text-green-800 border border-green-200"
               : record.medrec_horsestatus?.toLowerCase() === "sick"
                 ? "bg-orange-100 text-orange-800 border border-orange-200"
@@ -721,7 +703,7 @@ const MedicalRecordWithFollowups = ({ record, horse, onViewMedicalRecord }) => {
                   ? "bg-red-100 text-red-800 border border-red-200"
                   : "bg-gray-100 text-gray-600 border border-gray-200"
           }`}>
-            {record.medrec_horsestatus || "Unknown"}
+            {record.medrec_horsestatus === "assigned" ? "Healthy" : record.medrec_horsestatus || "Unknown"}
           </span>
         </div>
         
@@ -927,7 +909,8 @@ const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) 
             <div className="bg-white rounded-lg p-3 border border-blue-100">
               <p className="text-xs text-gray-500 mb-1">Horse Status</p>
               <span className={`inline-flex items-center py-1 px-3 rounded-full text-xs font-semibold ${
-                medicalRecord.medrec_horsestatus?.toLowerCase() === "healthy" 
+                medicalRecord.medrec_horsestatus?.toLowerCase() === "healthy" || 
+                medicalRecord.medrec_horsestatus?.toLowerCase() === "assigned"
                   ? "bg-green-100 text-green-800 border border-green-200"
                   : medicalRecord.medrec_horsestatus?.toLowerCase() === "sick"
                     ? "bg-orange-100 text-orange-800 border border-orange-200"
@@ -935,7 +918,7 @@ const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) 
                       ? "bg-red-100 text-red-800 border border-red-200"
                       : "bg-gray-100 text-gray-600 border border-gray-200"
               }`}>
-                {medicalRecord.medrec_horsestatus || "N/A"}
+                {medicalRecord.medrec_horsestatus === "assigned" ? "Healthy" : medicalRecord.medrec_horsestatus || "N/A"}
               </span>
             </div>
           </div>
@@ -1063,7 +1046,7 @@ const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) 
         </div>
 
         {[
-          { title: "Diagnosis", content: medicalRecord.medrec_diagnosis, color: "[#0F3D5A]" },
+          { title: "Diagnosis", content: medicalRecord.medrec_diagnosis, color: "red" },
           { title: "Clinical Signs", content: medicalRecord.medrec_clinical_signs, color: "orange" },
           { title: "Prognosis", content: medicalRecord.medrec_prognosis, color: "blue" },
           { title: "Recommendations", content: medicalRecord.medrec_recommendation, color: "green" },
@@ -1071,7 +1054,7 @@ const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) 
         ].map((section, index) => (
           <div key={index} className="bg-white rounded-xl p-5 mb-4 border border-gray-200 shadow-sm">
             <h6 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-              <div className={`w-2 h-2 bg-${section.color} rounded-full`}></div>
+              <div className={`w-2 h-2 bg-${section.color}-500 rounded-full`}></div>
               {section.title}
             </h6>
             <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
@@ -1144,6 +1127,12 @@ const HorseDetailView = ({ horse, onBack, onViewMedicalRecord, onViewTreatmentHi
     const height = horse.horse_height;
     if (!height || height === "" || height === "0") return "N/A";
     return `${height} hands`;
+  };
+
+  const getHorseStatusDisplay = (status) => {
+    const lowerStatus = status?.toLowerCase();
+    if (lowerStatus === "assigned") return "Healthy";
+    return status || "No Status";
   };
 
   const transformMedicalRecords = () => {
@@ -1234,7 +1223,8 @@ const HorseDetailView = ({ horse, onBack, onViewMedicalRecord, onViewTreatmentHi
             
             <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2">
               <span className={`inline-block py-1 px-3 rounded-full border shadow-sm text-xs font-semibold ${
-                horse.horse_status?.toLowerCase() === "healthy" 
+                horse.horse_status?.toLowerCase() === "healthy" || 
+                horse.horse_status?.toLowerCase() === "assigned"
                   ? "bg-green-100 text-green-800 border-green-200"
                   : horse.horse_status?.toLowerCase() === "sick"
                     ? "bg-orange-100 text-orange-800 border-orange-200"
@@ -1242,7 +1232,7 @@ const HorseDetailView = ({ horse, onBack, onViewMedicalRecord, onViewTreatmentHi
                       ? "bg-red-100 text-red-800 border-red-200"
                       : "bg-gray-100 text-gray-800 border-gray-200"
               }`}>
-                {horse.horse_status || "No Status"}
+                {getHorseStatusDisplay(horse.horse_status)}
               </span>
             </div>
           </div>
@@ -1391,7 +1381,6 @@ function DvmfHorseRecord() {
   const notificationDropdownRef = useRef(null)
   const sidebarRef = useRef(null)
 
-  // MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
       const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
@@ -1410,7 +1399,6 @@ function DvmfHorseRecord() {
       const data = await res.json();
       console.log("Mark all as read result:", data);
 
-      // Update frontend state
       setNotifications(prev =>
         prev.map(notif => ({ ...notif, read: true }))
       );
@@ -1420,195 +1408,184 @@ function DvmfHorseRecord() {
     }
   };
 
- // HANDLE INDIVIDUAL NOTIFICATION CLICK - UPDATED WITH HORSE OPERATOR & KUTSERO
-const handleNotificationClick = async (notification) => {
-  const notifId = notification?.notif_id || notification?.id;
+  const handleNotificationClick = async (notification) => {
+    const notifId = notification?.notif_id || notification?.id;
 
-  if (!notifId) {
-    console.warn("Notification ID is missing:", notification);
-  }
+    if (!notifId) {
+      console.warn("Notification ID is missing:", notification);
+    }
 
-  setNotifications((prev) =>
-    prev.map((notif) =>
-      notif.notif_id === notifId || notif.id === notifId
-        ? { ...notif, read: true }
-        : notif
-    )
-  );
+    setNotifications((prev) =>
+      prev.map((notif) =>
+        notif.notif_id === notifId || notif.id === notifId
+          ? { ...notif, read: true }
+          : notif
+      )
+    );
 
-  if (notifId) {
-    try {
-      await fetch(`${API_BASE_URL}/mark_notification_read/${notifId}/`, {
-        method: "POST",
-        credentials: "include",
+    if (notifId) {
+      try {
+        await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+          method: "POST",
+          credentials: "include",
+        });
+      } catch (err) {
+        console.error("Error marking notification as read:", err);
+      }
+    }
+
+    const message = (notification.message || "").toLowerCase();
+    const type = (notification.type || "").toLowerCase();
+
+    if (
+      type === "sos_emergency" ||
+      message.includes("sos") ||
+      message.includes("emergency") ||
+      message.includes("reported") ||
+      message.includes("urgent") ||
+      (message.includes("horse") && 
+       (message.includes("colic") || 
+        message.includes("injured") || 
+        message.includes("trauma")))
+    ) {
+      let sosId = null;
+      if (notification.related_id && notification.related_id.startsWith("sos_")) {
+        sosId = notification.related_id.replace("sos_", "");
+      }
+
+      navigate("/DvmfDashboard", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+          sosId: sosId,
+        },
       });
-    } catch (err) {
-      console.error("Error marking notification as read:", err);
-    }
-  }
-
-  const message = (notification.message || "").toLowerCase();
-  const type = (notification.type || "").toLowerCase();
-
-  // SOS & Emergency Notifications
-  if (
-    type === "sos_emergency" ||
-    message.includes("sos") ||
-    message.includes("emergency") ||
-    message.includes("reported") ||
-    message.includes("urgent") ||
-    (message.includes("horse") && 
-     (message.includes("colic") || 
-      message.includes("injured") || 
-      message.includes("trauma")))
-  ) {
-    let sosId = null;
-    if (notification.related_id && notification.related_id.startsWith("sos_")) {
-      sosId = notification.related_id.replace("sos_", "");
+      return;
     }
 
+    if (
+      message.includes("veterinarian") && 
+      (message.includes("registration") ||
+       message.includes("approved") ||
+       message.includes("declined") ||
+       message.includes("pending") ||
+       message.includes("needs approval"))
+    ) {
+      navigate("/DvmfAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+          tab: "veterinarian",
+        },
+      });
+      return;
+    }
+
+    if (
+      message.includes("horse-operator") ||
+      message.includes("horse operator") ||
+      (message.includes("horse") && message.includes("operator") && 
+       (message.includes("registration") || 
+        message.includes("approved") || 
+        message.includes("declined") || 
+        message.includes("pending")))
+    ) {
+      navigate("/DvmfAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+          tab: "horse-operator",
+        },
+      });
+      return;
+    }
+
+    if (
+      message.includes("kutsero") ||
+      (message.includes("registration") && message.includes("kutsero")) ||
+      (message.includes("kutsero") && 
+       (message.includes("approved") || 
+        message.includes("declined") || 
+        message.includes("pending")))
+    ) {
+      navigate("/DvmfAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+          tab: "kutsero",
+        },
+      });
+      return;
+    }
+
+    if (
+      message.includes("new registration") ||
+      message.includes("needs approval") ||
+      (message.includes("registration") && 
+       (message.includes("approved") || 
+        message.includes("declined") || 
+        message.includes("pending")))
+    ) {
+      navigate("/DvmfAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
+
+    if (
+      message.includes("medical record") ||
+      message.includes("medical access") ||
+      message.includes("requested access") ||
+      message.includes("medrec") ||
+      (message.includes("record") && message.includes("access"))
+    ) {
+      navigate("/DvmfDashboard", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+          section: "medical-records",
+        },
+      });
+      return;
+    }
+
+    if (message.includes("comment") || type === "comment") {
+      navigate("/DvmfAnnouncement", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
+
+    if (
+      message.includes("appointment") ||
+      message.includes("schedule") ||
+      type.includes("appointment")
+    ) {
+      navigate("/DvmfDashboard", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+          section: "appointments",
+        },
+      });
+      return;
+    }
+
+    console.log("Notification clicked - navigating to dashboard:", notification);
     navigate("/DvmfDashboard", {
       state: {
         highlightedNotification: notification,
         shouldHighlight: true,
-        sosId: sosId,
       },
     });
-    return;
-  }
+  };
 
-  // VETERINARIAN Account Approvals
-  if (
-    message.includes("veterinarian") && 
-    (message.includes("registration") ||
-     message.includes("approved") ||
-     message.includes("declined") ||
-     message.includes("pending") ||
-     message.includes("needs approval"))
-  ) {
-    navigate("/DvmfAccountApproval", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-        tab: "veterinarian", // ADDED: Specify veterinarian tab
-      },
-    });
-    return;
-  }
-
-  // HORSE OPERATOR Account Approvals - NEW
-  if (
-    message.includes("horse-operator") ||
-    message.includes("horse operator") ||
-    (message.includes("horse") && message.includes("operator") && 
-     (message.includes("registration") || 
-      message.includes("approved") || 
-      message.includes("declined") || 
-      message.includes("pending")))
-  ) {
-    navigate("/DvmfAccountApproval", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-        tab: "horse-operator", // ADDED: Specify horse-operator tab
-      },
-    });
-    return;
-  }
-
-  // KUTSERO Account Approvals - NEW
-  if (
-    message.includes("kutsero") ||
-    (message.includes("registration") && message.includes("kutsero")) ||
-    (message.includes("kutsero") && 
-     (message.includes("approved") || 
-      message.includes("declined") || 
-      message.includes("pending")))
-  ) {
-    navigate("/DvmfAccountApproval", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-        tab: "kutsero", // ADDED: Specify kutsero tab
-      },
-    });
-    return;
-  }
-
-  // GENERAL REGISTRATION (catch-all for any registration type)
-  if (
-    message.includes("new registration") ||
-    message.includes("needs approval") ||
-    (message.includes("registration") && 
-     (message.includes("approved") || 
-      message.includes("declined") || 
-      message.includes("pending")))
-  ) {
-    navigate("/DvmfAccountApproval", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
-
-  // MEDICAL RECORD ACCESS REQUESTS
-  if (
-    message.includes("medical record") ||
-    message.includes("medical access") ||
-    message.includes("requested access") ||
-    message.includes("medrec") ||
-    (message.includes("record") && message.includes("access"))
-  ) {
-    navigate("/DvmfDashboard", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-        section: "medical-records", // Optional: specify section
-      },
-    });
-    return;
-  }
-
-  // COMMENT NOTIFICATIONS
-  if (message.includes("comment") || type === "comment") {
-    navigate("/DvmfAnnouncement", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
-
-  // APPOINTMENT NOTIFICATIONS (if you have them)
-  if (
-    message.includes("appointment") ||
-    message.includes("schedule") ||
-    type.includes("appointment")
-  ) {
-    navigate("/DvmfDashboard", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-        section: "appointments",
-      },
-    });
-    return;
-  }
-
-  // DEFAULT: Go to dashboard for other notifications
-  console.log("Notification clicked - navigating to dashboard:", notification);
-  navigate("/DvmfDashboard", {
-    state: {
-      highlightedNotification: notification,
-      shouldHighlight: true,
-    },
-  });
-};
-
-  // Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
     console.log("Notifications updated from modal:", updatedNotifications);
     console.log("New unread count:", updatedNotifications.filter(n => !n.read).length);
@@ -1635,7 +1612,6 @@ const handleNotificationClick = async (notification) => {
       .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
 
-  // Manual refresh function
   const handleManualRefresh = async () => {
     setIsRefreshing(true)
     try {
@@ -1675,18 +1651,26 @@ const handleNotificationClick = async (notification) => {
     return () => clearInterval(interval)
   }, [loadNotifications])
 
-  // Filter only approved horses
   const filteredHorseRecords = useCallback(() => {
     let filtered = horseRecords.filter(horse => horse.status === "approved")
     
     if (areaFilter !== "all") {
       filtered = filtered.filter((horse) => horse.location.toLowerCase().includes(areaFilter.toLowerCase()))
     }
+    
+    // FIXED: Treat "assigned" as "healthy" for filtering
     if (statusFilter !== "all") {
-      filtered = filtered.filter((horse) => 
-        horse.horse_status?.toLowerCase() === statusFilter.toLowerCase()
-      )
+      filtered = filtered.filter((horse) => {
+        const horseStatus = horse.horse_status?.toLowerCase();
+        const filterStatus = statusFilter.toLowerCase();
+        
+        if (filterStatus === "healthy") {
+          return horseStatus === "healthy" || horseStatus === "assigned";
+        }
+        return horseStatus === filterStatus;
+      })
     }
+    
     if (searchTerm) {
       filtered = filtered.filter(
         (horse) =>
@@ -1724,7 +1708,6 @@ const handleNotificationClick = async (notification) => {
   const viewHorseDetails = async (horse) => {
     setDetailLoading(true)
     setSelectedHorse(horse)
-    // Simulate loading delay for better UX
     await new Promise(resolve => setTimeout(resolve, 500))
     setCurrentView('horse')
     setDetailLoading(false)
@@ -1734,7 +1717,6 @@ const handleNotificationClick = async (notification) => {
     setDetailLoading(true)
     setSelectedHorse(horse)
     setSelectedMedicalRecord(record)
-    // Simulate loading delay for better UX
     await new Promise(resolve => setTimeout(resolve, 500))
     setCurrentView('medical')
     setDetailLoading(false)
@@ -1743,7 +1725,6 @@ const handleNotificationClick = async (notification) => {
   const viewTreatmentHistory = async (record) => {
     setDetailLoading(true)
     setSelectedTreatmentHistory(record)
-    // Simulate loading delay for better UX
     await new Promise(resolve => setTimeout(resolve, 500))
     setCurrentView('treatment')
     setDetailLoading(false)
@@ -1812,7 +1793,6 @@ const handleNotificationClick = async (notification) => {
 
   const currentFilteredHorseRecords = paginatedHorseRecords()
 
-  // Calculate unread notifications count
   const unreadNotificationsCount = notifications.filter(notif => !notif.read).length
 
   const renderListView = () => (
@@ -1881,6 +1861,7 @@ const handleNotificationClick = async (notification) => {
               ) : (
                 currentFilteredHorseRecords.map((horse, index) => {
                   const horseStatus = horse.horse_status || "No Status"
+                  const displayStatus = horseStatus === "assigned" ? "Healthy" : horseStatus
 
                   return (
                     <div
@@ -1893,7 +1874,7 @@ const handleNotificationClick = async (notification) => {
                       <div className="text-sm flex items-center">{horse.location || "N/A"}</div>
                       <div className="flex items-center">
                         <span className={`inline-block py-1 px-2 rounded-xl text-xs font-medium ${
-                          horseStatus.toLowerCase() === "healthy" 
+                          horseStatus.toLowerCase() === "healthy" || horseStatus.toLowerCase() === "assigned"
                             ? "bg-green-100 text-green-800"
                             : horseStatus.toLowerCase() === "sick"
                               ? "bg-orange-100 text-orange-600"
@@ -1901,7 +1882,7 @@ const handleNotificationClick = async (notification) => {
                                 ? "bg-red-100 text-red-600"
                                 : "bg-gray-100 text-gray-600"
                         }`}>
-                          {horseStatus}
+                          {displayStatus}
                         </span>
                       </div>
                       <div className="flex items-center justify-center">
@@ -2003,7 +1984,6 @@ const handleNotificationClick = async (notification) => {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Refresh Button */}
             <button
               onClick={handleManualRefresh}
               disabled={isRefreshing}
@@ -2017,7 +1997,6 @@ const handleNotificationClick = async (notification) => {
               />
             </button>
 
-            {/* Notification Bell */}
             <button
               ref={notificationBellRef}
               className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors"

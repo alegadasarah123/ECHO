@@ -23,19 +23,15 @@ import HealthReports from "./pages/Dvmf/DvmfHealthReport.jsx";
 import HorseRecords from "./pages/Dvmf/DvmfHorseRecord.jsx";
 import Messages from "./pages/Dvmf/DvmfMessage.jsx";
 import Settingss from "./pages/Dvmf/DvmfSettings.jsx";
-import VetAppointment from "./pages/Veterinarian/VetAppointment.jsx";
-import VetDashboard from "./pages/Veterinarian/VetDashboard.jsx";
-import VetAppointmentRequest from"./pages/Veterinarian/VetAppRequest";
-import VetMedRecord from "./pages/Veterinarian/VetMedRecord.jsx";
-import VetSettings from "./pages/Veterinarian/VetSettings.jsx";
-import AppointmentDetails from "./pages/Veterinarian/AppointmentDetails.jsx";
-import MedicalRecords from "./pages/Veterinarian/AppointmentDetails.jsx";
+import { default as AppointmentDetails, default as MedicalRecords } from "./pages/Veterinarian/AppointmentDetails.jsx";
 import TreatmentRecords from "./pages/Veterinarian/TreatmentRecord.jsx";
+import VetAppointment from "./pages/Veterinarian/VetAppointment.jsx";
+import VetAppointmentRequest from "./pages/Veterinarian/VetAppRequest";
+import VetDashboard from "./pages/Veterinarian/VetDashboard.jsx";
+import VetMedRecord from "./pages/Veterinarian/VetMedRecord.jsx";
 import ScheduleCalendar from "./pages/Veterinarian/VetScheduleCalendar.jsx";
-import KutDashboard from "./pages/KutseroPresident/KutDashboard.jsx";
-import KutSettings from "./pages/KutseroPresident/KutSettings.jsx"
-import KutMessages from "./pages/KutseroPresident/KutMessages.jsx"
-import KutUserManagement from "./pages/KutseroPresident/KutUserManagement.jsx";
+import VetSettings from "./pages/Veterinarian/VetSettings.jsx";
+
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
@@ -44,10 +40,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <Route path="/" element={<App />} />
         <Route path="/login" element={<LogIn />} />
         <Route path="/signup" element={<SignUp />} />
-        <Route path="/KutDashboard" element={<KutDashboard />} />
-        <Route path="/KutSettings" element={<KutSettings />} />
-        <Route path="/KutMessages" element={<KutMessages />} />
-        <Route path="/KutUserManagement" element={<KutUserManagement />} />
+       
         <Route path="/VetDashboard" element={<VetDashboard />} />
         <Route path="/VetAppointmentRequests" element={<VetAppointmentRequest/>}/>
         <Route path="/VetAppointments" element={<VetAppointment />} />

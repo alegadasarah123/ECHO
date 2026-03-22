@@ -4,7 +4,7 @@ from django.urls import path, include
 from . import views
 
 urlpatterns = [
-    path('kutsero_president/', include('api.kutsero_president.urls')),
+    
     path('veterinarian/', include('api.veterinarian.urls')),
     path('api/kutsero/', include('api.kutsero.urls')),
     path('api/horse_operator/', include('api.horse_operator.urls')), 

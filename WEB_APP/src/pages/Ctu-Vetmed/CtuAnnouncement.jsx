@@ -1,4 +1,4 @@
-"use client"
+
 import Sidebar from "@/components/CtuSidebar"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
@@ -21,7 +21,7 @@ import {
 } from "lucide-react"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://localhost:8000/api/ctu_vetmed"
+const API_BASE = "http://localhost:8000/api/ctu_vetmed";
 
 // Skeleton Loader Component
 const PostSkeletonLoader = () => (
@@ -872,7 +872,13 @@ const handleNotificationClick = async (notification) => {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch(`${API_BASE}/get_vetnotifications/`)
+   fetch("http://localhost:8000/api/ctu_vetmed/get_vetnotifications/", {
+    method: "GET",
+    credentials: "include", // This is CRITICAL - sends cookies/session
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()

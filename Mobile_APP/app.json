@@ -21,13 +21,12 @@
     "experiments": {
       "typedRoutes": true
     },
+    "owner": "devine12",
     "extra": {
-      "apiUrl": "https://echo-ebl8.onrender.com/api",
       "router": {},
       "eas": {
-        "projectId": "93113c48-d927-448f-b0ae-cc432c8096a2"
+        "projectId": "7759bce1-6ce1-4751-9830-34257fb4d679"
       }
-    },
-    "owner": "vine12"
+    }
   }
 }

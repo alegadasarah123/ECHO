@@ -1,4 +1,4 @@
-import {AlertCircle,ArrowLeft,Check,Eye,EyeOff,FileText,Lock,MapPin,Stethoscope,Upload,User,X,ZoomIn} from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, Eye, EyeOff, FileText, Lock, MapPin, Stethoscope, Upload, User, X, ZoomIn } from "lucide-react";
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -569,7 +569,7 @@ function SignUp() {
 
       console.log("DEBUG: Sending form data with files");
 
-      const response = await fetch("https://echo-ebl8.onrender.com/api/signup_vet/", {
+      const response = await fetch("http://localhost:8000/api/signup_vet/", {
         method: "POST",
         body: formData
       });

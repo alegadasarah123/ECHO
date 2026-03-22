@@ -1,4 +1,4 @@
-"use client"
+
 
 import Sidebar from "@/components/CtuSidebar"
 import jsPDF from "jspdf"
@@ -529,7 +529,7 @@ const handleNotificationClick = async (notification) => {
   const loadDirectoryData = async () => {
     try {
       setLoading(true)
-      const response = await fetch("http://localhost:8000/api/ctu_vetmed/get_directory_profiles/", {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_directory_profiles/", {
         method: "GET",
         credentials: "include",
       })

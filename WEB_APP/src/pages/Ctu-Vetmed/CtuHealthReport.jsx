@@ -1,5 +1,3 @@
-"use client"
-
 import Sidebar from "@/components/CtuSidebar"
 import jsPDF from "jspdf"
 import { Bell, Calendar, Download, RefreshCw } from "lucide-react"
@@ -439,7 +437,13 @@ const handleNotificationClick = async (notification) => {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    return fetch(`${API_BASE}/get_vetnotifications/`)
+    return fetch("http://localhost:8000/api/ctu_vetmed/get_vetnotifications/", {
+    method: "GET",
+    credentials: "include", // This is CRITICAL - sends cookies/session
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -1021,7 +1025,6 @@ const handleNotificationClick = async (notification) => {
       .catch((error) => {
         console.error("Error loading data:", error);
         setIsLoading(false);
-        setDataError("Failed to load data. Please try refreshing.");
       });
   }, [loadStatistics, loadNotifications]);
 
@@ -1108,11 +1111,6 @@ const handleNotificationClick = async (notification) => {
         <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
           <div className="flex flex-col">
             <h2 className="text-2xl font-bold text-gray-800 mb-1">Health Reports</h2>
-            {dataError && (
-              <div className="text-sm text-red-600 bg-red-50 px-3 py-1 rounded-md">
-                {dataError}
-              </div>
-            )}
           </div>
 
           <div className="flex items-center gap-4">
@@ -1295,7 +1293,7 @@ const handleNotificationClick = async (notification) => {
               ) : (
                 <>
                   {/* Legend */}
-                  <div className="flex gap-5 mb-5 justify-center flex-wrap">
+                  <div className="flex gap-5 mb-10 justify-center flex-wrap">
                     <div className="flex items-center gap-2 text-xs lg:text-[12px] text-gray-500 bg-green-50 px-3 py-1 rounded-full">
                       <div className="w-3 h-3 rounded-sm bg-green-500"></div>
                       <span className="font-medium">Healthy</span>
@@ -1313,7 +1311,7 @@ const handleNotificationClick = async (notification) => {
                   {/* Line Chart - FIXED: Proper alignment of month labels with data points */}
                   <div className="w-full">
                     <div className="min-w-[700px]">
-                      <div className="relative h-80 mt-4">
+                      <div className="relative h-80 mt-25">
                         {/* Y-axis title */}
                         <div className="absolute left-0 top-1/2 transform -translate-y-1/2 -translate-x-15 -rotate-90 text-xs font-medium text-gray-600 whitespace-nowrap">
                           Total Number of Health Status
@@ -1498,7 +1496,7 @@ const handleNotificationClick = async (notification) => {
               )}
             </div>
 
-            {/* Pie Chart - Takes 1/3 of the width (Deceased Horses Only) */}
+            {/* Radial Percentage Chart - Takes 1/3 of the width (Deceased Horses Only) */}
             <div className="bg-white rounded-lg shadow-sm p-4 lg:p-6 border border-gray-200">
               <div className="flex items-center gap-3 mb-5">
                 <h2 className="text-lg lg:text-[18px] font-semibold text-gray-950">
@@ -1516,71 +1514,175 @@ const handleNotificationClick = async (notification) => {
                 </div>
               ) : (
                 <>
-                  {/* Pie Chart Visualization - Deceased vs Alive */}
+                  {/* Radial Percentage Chart Visualization - Deceased vs Alive */}
                   <div className="flex flex-col items-center">
-                    <div className="relative w-64 h-64 mb-6">
-                      {/* SVG Pie Chart - Only deceased vs alive (healthy + sick) */}
+                    <div className="relative w-64 h-64 mt-6">
+                      {/* Radial Percentage Chart */}
                       <svg width="256" height="256" viewBox="0 0 256 256" className="transform -rotate-90">
-                        {/* Alive segment (Healthy + Sick) */}
-                        {alivePercentage > 0 && (
-                          <circle
-                            cx="128"
-                            cy="128"
-                            r="100"
-                            fill="transparent"
-                            stroke="#e5e7eb" /* Light gray for alive */
-                            strokeWidth="50"
-                            strokeDasharray={`${alivePercentage * 3.6} ${360 - (alivePercentage * 3.6)}`}
-                            strokeDashoffset="0"
-                          />
-                        )}
+                        {/* Background Circle */}
+                        <circle
+                          cx="128"
+                          cy="128"
+                          r="100"
+                          fill="none"
+                          stroke="#e5e7eb"
+                          strokeWidth="15"
+                          opacity="0.3"
+                        />
                         
-                        {/* Deceased segment */}
+                        {/* Percentage Ring - Deceased */}
                         {deceasedPercentage > 0 && (
                           <circle
                             cx="128"
                             cy="128"
                             r="100"
-                            fill="transparent"
-                            stroke="#dc3545" /* Red for deceased */
-                            strokeWidth="50"
-                            strokeDasharray={`${deceasedPercentage * 3.6} ${360 - (deceasedPercentage * 3.6)}`}
-                            strokeDashoffset={`-${alivePercentage * 3.6}`}
+                            fill="none"
+                            stroke="#dc3545"
+                            strokeWidth="15"
+                            strokeLinecap="round"
+                            strokeDasharray={`${deceasedPercentage * 3.6} 360`}
+                            strokeDashoffset="0"
+                            className="animate-dash"
                           />
                         )}
+                        
+                        {/* Inner Circle for Stats */}
+                        <circle
+                          cx="128"
+                          cy="128"
+                          r="70"
+                          fill="#f8f9fa"
+                        />
+                        
+                        {/* Percentage text inside the circle */}
+                        <text
+                          x="128"
+                          y="115"
+                          textAnchor="middle"
+                          className="text-2xl font-bold fill-gray-900"
+                          style={{ transform: 'rotate(90deg)', transformOrigin: '128px 128px' }}
+                        >
+                          {deceasedPercentage}%
+                        </text>
+                        
+                        <text
+                          x="128"
+                          y="140"
+                          textAnchor="middle"
+                          className="text-sm fill-gray-600"
+                          style={{ transform: 'rotate(90deg)', transformOrigin: '128px 128px' }}
+                        >
+                          Deceased
+                        </text>
                       </svg>
                       
-                      {/* Center text */}
-                      <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <div className="text-2xl font-bold text-gray-900">{statistics.deceased}</div>
-                        <div className="text-sm text-gray-600">Deceased Horses</div>
-                        <div className="text-xs text-gray-500 mt-1">{deceasedPercentage}% of total</div>
+                      {/* Legend Indicators around the circle */}
+                      <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                        <div className="flex flex-col items-center">
+                          <div className="w-4 h-4 bg-red-500 rounded-full mb-1"></div>
+                          <div className="text-xs font-medium text-gray-700 whitespace-nowrap">
+                            Deceased
+                          </div>
+                          <div className="text-xs text-gray-600">{statistics.deceased}</div>
+                        </div>
+                      </div>
+                      
+                      <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2">
+                        <div className="flex flex-col items-center">
+                          <div className="w-4 h-4 bg-green-300 rounded-full mb-1"></div>
+                          <div className="text-xs font-medium text-gray-700 whitespace-nowrap">
+                            Alive
+                          </div>
+                          <div className="text-xs text-gray-600">{aliveHorses}</div>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Statistics Summary */}
+                    {/* Detailed Statistics */}
                     <div className="w-full space-y-4">
                       {/* Deceased Horses Detail */}
-                      <div className="p-4 bg-red-50 rounded-lg border border-red-100">
+                      <div className="p-4 bg-red-50 rounded-lg border border-red-100 mt-10">
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-sm bg-red-500"></div>
-                            <span className="text-sm font-medium text-gray-700">Deceased Horses</span>
+                          <div className="flex items-center gap-3">
+                            <div className="relative">
+                              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center mt-10">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <circle cx="12" cy="12" r="10" stroke="#dc3545" strokeWidth="2"/>
+                                  <path d="M8 8L16 16M16 8L8 16" stroke="#dc3545" strokeWidth="2" strokeLinecap="round"/>
+                                </svg>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm font-medium text-gray-700">Deceased Horses</div>
+                              <div className="text-xs text-gray-500">{deceasedPercentage}% of total</div>
+                            </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-lg font-bold text-red-600">{statistics.deceased}</div>
-                            <div className="text-xs text-gray-600">{deceasedPercentage}% of total</div>
+                            <div className="text-2xl font-bold text-red-600">{statistics.deceased}</div>
                           </div>
                         </div>
-                      </div>
-                        {/* Total Horses */}
-                      <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                        <div className="flex items-center justify-between">
-                          <div className="text-sm font-medium text-gray-700">Total Horses</div>
-                          <div className="text-lg font-bold text-gray-900">{totalHorses}</div>
+                        
+                        {/* Progress bar for percentage visualization */}
+                        <div className="mt-3">
+                          <div className="flex justify-between text-xs text-gray-600 mb-1">
+                            <span>0%</span>
+                            <span>Deceased: {deceasedPercentage}%</span>
+                            <span>100%</span>
+                          </div>
+                          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-red-500 rounded-full transition-all duration-500"
+                              style={{ width: `${deceasedPercentage}%` }}
+                            ></div>
+                          </div>
                         </div>
                       </div>
                       
+                      {/* Alive Horses Detail */}
+                      <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="relative">
+                              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <circle cx="12" cy="12" r="10" stroke="#28a745" strokeWidth="2"/>
+                                  <path d="M16 8L10 14L8 12" stroke="#28a745" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm font-medium text-gray-700">Alive Horses</div>
+                              <div className="text-xs text-gray-500">{alivePercentage}% of total</div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-2xl font-bold text-green-600">{aliveHorses}</div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Total Horses */}
+                      <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="relative">
+                              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <circle cx="12" cy="12" r="10" stroke="#007bff" strokeWidth="2"/>
+                                  <text x="12" y="16" textAnchor="middle" fontSize="10" fill="#007bff" fontWeight="bold">Σ</text>
+                                </svg>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm font-medium text-gray-700">Total Horses</div>
+                              <div className="text-xs text-gray-500">All horses in the system</div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-2xl font-bold text-blue-600">{totalHorses}</div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </>
