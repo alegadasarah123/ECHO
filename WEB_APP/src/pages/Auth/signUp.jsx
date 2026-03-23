@@ -952,7 +952,7 @@ const getSelectStyle = (fieldName, hasError = false) => {
                 1. Account Registration and Verification
               </h3>
               <p style={{ marginBottom: "1rem" }}>
-                By registering as a veterinarian on Echo Portal, you agree to provide accurate and complete information about your professional credentials, including your license number, specialization, and years of experience. All information submitted will be verified by our administrative team.
+                By registering as a veterinarian on Echo, you agree to provide accurate and complete information about your professional credentials, including your license number, specialization, and years of experience. All information submitted will be verified by our administrative team.
               </p>
 
               <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
@@ -973,28 +973,28 @@ const getSelectStyle = (fieldName, hasError = false) => {
                 4. Platform Usage
               </h3>
               <p style={{ marginBottom: "1rem" }}>
-                The Echo Portal is designed for professional veterinary use. You agree not to misuse the platform for unauthorized purposes, including but not limited to spam, fraudulent activities, or distribution of harmful content.
+                The Echo is designed for professional veterinary use. You agree not to misuse the platform for unauthorized purposes, including but not limited to spam, fraudulent activities, or distribution of harmful content.
               </p>
 
               <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
                 5. Account Approval and Suspension
               </h3>
               <p style={{ marginBottom: "1rem" }}>
-                Account approval is subject to verification of your credentials. Echo Portal reserves the right to suspend or terminate accounts that violate these terms or provide false information. You will be notified of any account status changes.
+                Account approval is subject to verification of your credentials. Echo reserves the right to suspend or terminate accounts that violate these terms or provide false information. You will be notified of any account status changes.
               </p>
 
               <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
                 6. Intellectual Property
               </h3>
               <p style={{ marginBottom: "1rem" }}>
-                All content and materials on the Echo Portal are protected by intellectual property laws. You may not reproduce, distribute, or create derivative works without explicit permission.
+                All content and materials on the Echo are protected by intellectual property laws. You may not reproduce, distribute, or create derivative works without explicit permission.
               </p>
 
               <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
                 7. Limitation of Liability
               </h3>
               <p style={{ marginBottom: "1rem" }}>
-                Echo Portal provides the platform as a service and is not liable for any direct or indirect damages arising from the use of the platform. Veterinary professionals are responsible for their own professional decisions and advice.
+                Echo provides the platform as a service and is not liable for any direct or indirect damages arising from the use of the platform. Veterinary professionals are responsible for their own professional decisions and advice.
               </p>
 
               <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
@@ -1765,7 +1765,7 @@ const getSelectStyle = (fieldName, hasError = false) => {
                       >
                         Terms and Conditions
                       </button>
-                      {" "}of Echo Portal
+                      {" "}of Echo
                     </span>
                   }
                   hasError={!!errors.terms}
@@ -1790,9 +1790,10 @@ const getSelectStyle = (fieldName, hasError = false) => {
   };
 
   const styles = {
-    container: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #f8f4f0 0%, #fdfbf8 50%, #f8f4f0 100%)", padding: "1rem", position: "relative", fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
-    backgroundPattern: { position: "absolute", inset: 0, backgroundImage: "radial-gradient(circle at 2px 2px, rgba(184, 118, 62, 0.15) 1.5px, transparent 0)", backgroundSize: "24px 24px", opacity: 0.4 },
-    backLink: { position: "absolute", top: "1.5rem", left: "2rem", display: "flex", alignItems: "center", gap: "0.5rem", color: "#6b7280", cursor: "pointer", fontSize: "0.95rem", transition: "all 0.2s ease", zIndex: 2, fontWeight: 500 },
+    container: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #FDF8F6 0%, #FCE7D9 50%, #FDF4E8 100%)", padding: "1rem", position: "relative", fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+    backgroundPattern: { position: "absolute", inset: 0, backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23B8763E' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`, backgroundSize: "60px 60px", opacity: 0.4 },
+    overlay: { position: "absolute", inset: 0, background: "radial-gradient(circle at 50% 50%, rgba(184, 118, 62, 0.08) 0%, rgba(184, 118, 62, 0.02) 100%)", zIndex: 0 },
+    backLink: { position: "absolute", top: "1.5rem", left: "2rem", display: "flex", alignItems: "center", gap: "0.5rem", color: "#B8763E", cursor: "pointer", fontSize: "0.95rem", transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)", zIndex: 2, fontWeight: 500, background: "rgba(255, 255, 255, 0.9)", padding: "0.5rem 1rem", borderRadius: "2rem", backdropFilter: "blur(10px)", boxShadow: "0 2px 8px rgba(184, 118, 62, 0.1)", border: "1px solid rgba(184, 118, 62, 0.2)" },
     card: { backgroundColor: "white", borderRadius: "1rem", padding: "2.5rem", width: "100%", maxWidth: "650px", position: "relative", zIndex: 1, boxShadow: "0 20px 40px rgba(184, 118, 62, 0.12), 0 0 0 1px rgba(184, 118, 62, 0.05)" },
     button: { padding: "0.875rem", borderRadius: "0.5rem", cursor: "pointer", border: "none", transition: "all 0.2s ease", fontWeight: 500, fontSize: "0.95rem", display: "flex", alignItems: "center", gap: "0.5rem" },
     buttonPrev: { background: "#f3f4f6", color: "#374151" },

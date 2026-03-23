@@ -10,7 +10,10 @@ import requests
 import datetime
 import base64
 import random
+import string  
+import time    
 from datetime import datetime
+from django.core.mail import send_mail  
 
 
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY) 
@@ -21,7 +24,6 @@ SUPABASE_SERVICE_ROLE_KEY = settings.SUPABASE_SERVICE_ROLE_KEY
 SUPABASE_URL = settings.SUPABASE_URL
 SUPABASE_ANON_KEY = settings.SUPABASE_ANON_KEY
 
-# --------------------------------------------------------------- LOGIN WEB -------------------------------------------------------------------------------------------
 # --------------------------------------------------------------- LOGIN WEB -------------------------------------------------------------------------------------------
 @api_view(['POST'])
 def login(request):
@@ -737,15 +739,67 @@ def update_user_status(request):
 
 
 #-----------------------------------------------------------------FORGOT PASSWORD WEB---------------------------------------------------------------------------------------
+# Simple in-memory OTP storage (will reset on server restart)
+otp_storage = {}  # Format: {email: {'otp': '123456', 'expires_at': timestamp, 'purpose': 'password_reset'}}
+
+def generate_otp():
+    """Generate 6-digit OTP"""
+    return ''.join(random.choices(string.digits, k=6))
+
+def send_otp_email(email, otp_code, purpose="password_reset"):
+    """Send OTP via email"""
+    if purpose == "password_reset":
+        subject = "Password Reset OTP - ECHO Portal"
+        message = f"""
+Hello,
+
+You requested to reset your password for your ECHO account.
+
+Your OTP (One-Time Password) is: {otp_code}
+
+This code will expire in 10 minutes.
+
+If you didn't request this, please ignore this email.
+
+Best regards,
+ECHO Team
+"""
+    else:
+        subject = "Verification OTP - ECHO "
+        message = f"""
+Hello,
+
+Your verification OTP is: {otp_code}
+
+This code will expire in 10 minutes.
+
+Best regards,
+ECHO Team
+"""
+    
+    send_mail(
+        subject,
+        message,
+        settings.DEFAULT_FROM_EMAIL,
+        [email],
+        fail_silently=False,
+    )
 
 
 @api_view(["POST"])
 def forgot_password(request):
+    """Check if email exists and send OTP"""
     email = request.data.get("email")
     if not email:
         return Response({"error": "Email is required."},
                         status=status.HTTP_400_BAD_REQUEST)
 
+    # Validate email format
+    if not "@" in email or not "." in email:
+        return Response({"error": "Invalid email format."},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    # Check if email exists in Supabase
     url = f"{settings.SUPABASE_URL}/auth/v1/admin/users"
     headers = {
         "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
@@ -761,26 +815,95 @@ def forgot_password(request):
     data = resp.json()
     users = data.get("users", [])
 
-    # 👇 Check kung naa ba'y match sa email
+    # Check if email exists
     user = next((u for u in users if u.get("email") == email), None)
 
     if not user:
         return Response({"exists": False, "error": "Email not registered."},
                         status=status.HTTP_404_NOT_FOUND)
 
-    return Response({"exists": True}, status=status.HTTP_200_OK)
+    # Generate OTP
+    otp_code = generate_otp()
+    expires_at = time.time() + 600  # 10 minutes
+
+    # Store OTP in memory
+    otp_storage[email] = {
+        'otp': otp_code,
+        'expires_at': expires_at,
+        'purpose': 'password_reset',
+        'verified': False
+    }
+
+    # Send OTP email
+    try:
+        send_otp_email(email, otp_code, "password_reset")
+        return Response({
+            "exists": True,
+            "message": "OTP sent to your email. Please check your inbox.",
+            "email": email
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        return Response({"error": "Failed to send OTP email. Please try again."},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-
+@api_view(["POST"])
+def verify_otp(request):
+    """Verify OTP code"""
+    email = request.data.get("email")
+    otp_code = request.data.get("otp")
+    purpose = request.data.get("purpose", "password_reset")
+    
+    if not email or not otp_code:
+        return Response({"error": "Email and OTP are required."},
+                        status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check if OTP exists
+    if email not in otp_storage:
+        return Response({"error": "No OTP found for this email. Please request a new one."},
+                        status=status.HTTP_404_NOT_FOUND)
+    
+    stored_data = otp_storage[email]
+    
+    # Check if OTP expired
+    if time.time() > stored_data['expires_at']:
+        # Remove expired OTP
+        del otp_storage[email]
+        return Response({"error": "OTP has expired. Please request a new one."},
+                        status=status.HTTP_400_BAD_REQUEST)
+    
+    # Verify OTP
+    if stored_data['otp'] != otp_code:
+        return Response({"error": "Invalid OTP. Please try again."},
+                        status=status.HTTP_400_BAD_REQUEST)
+    
+    # Mark OTP as verified
+    otp_storage[email]['verified'] = True
+    
+    return Response({
+        "success": True,
+        "message": "OTP verified successfully. You can now reset your password."
+    }, status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
 def reset_password(request):
+    """Reset password after OTP verification"""
     email = request.data.get("email")
     new_password = request.data.get("newPassword")
-
+    
     if not email or not new_password:
         return Response({"error": "Email and new password are required."},
+                        status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check if OTP was verified
+    if email not in otp_storage:
+        return Response({"error": "Please request OTP first."},
+                        status=status.HTTP_400_BAD_REQUEST)
+    
+    if not otp_storage[email].get('verified', False):
+        return Response({"error": "Please verify OTP first."},
                         status=status.HTTP_400_BAD_REQUEST)
 
     # 1. Get all users from Supabase
@@ -815,7 +938,66 @@ def reset_password(request):
     if not update_resp.ok:
         return Response({"error": "Failed to reset password."},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    # Clear OTP after successful reset
+    if email in otp_storage:
+        del otp_storage[email]
 
     return Response({"success": True, "message": "Password reset successful."},
                     status=status.HTTP_200_OK)
 
+
+@api_view(["POST"])
+def resend_otp(request):
+    """Resend OTP code"""
+    email = request.data.get("email")
+    purpose = request.data.get("purpose", "password_reset")
+    
+    if not email:
+        return Response({"error": "Email is required."},
+                        status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check if email exists in Supabase
+    url = f"{settings.SUPABASE_URL}/auth/v1/admin/users"
+    headers = {
+        "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+    }
+
+    resp = requests.get(url, headers=headers)
+    if not resp.ok:
+        return Response({"error": "Failed to query Supabase."},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    data = resp.json()
+    users = data.get("users", [])
+    user = next((u for u in users if u.get("email") == email), None)
+    
+    if not user:
+        return Response({"error": "Email not registered."},
+                        status=status.HTTP_404_NOT_FOUND)
+    
+    # Generate new OTP
+    otp_code = generate_otp()
+    expires_at = time.time() + 600  # 10 minutes
+    
+    # Update or create OTP
+    otp_storage[email] = {
+        'otp': otp_code,
+        'expires_at': expires_at,
+        'purpose': purpose,
+        'verified': False
+    }
+    
+    # Send OTP email
+    try:
+        send_otp_email(email, otp_code, purpose)
+        return Response({
+            "success": True,
+            "message": "New OTP sent to your email.",
+            "email": email
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        return Response({"error": "Failed to send OTP email. Please try again."},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)

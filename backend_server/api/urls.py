@@ -1,4 +1,3 @@
-
 from django.contrib import admin
 from django.urls import path, include
 from . import views
@@ -14,11 +13,8 @@ urlpatterns = [
     path('api/signup_mobile/', views.signup_mobile, name='signup_mobile'),
     path('api/login_mobile/', views.login_mobile, name='login_mobile'),
     path('api/update_user_status/', views.update_user_status, name='update_user_status'),
-    path("api/forgot-password/", views.forgot_password, name="forgot-password"),
-    path("api/reset-password/", views.reset_password, name="reset-password"),
-
+    path('api/forgot-password/', views.forgot_password, name='forgot_password'),
+    path('api/verify-otp/', views.verify_otp, name='verify_otp'),
+    path('api/resend-otp/', views.resend_otp, name='resend_otp'),
+    path('api/reset-password/', views.reset_password, name='reset_password')
 ]
-   
-
-
-
