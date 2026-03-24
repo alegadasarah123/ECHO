@@ -1211,11 +1211,12 @@ const MessagesWithDateHeaders = ({ messages, isTyping, isNewConversation, isEmpt
                 }`}
               >
                 <div
-                  className={`px-4 py-2 rounded-2xl text-sm ${
+                  className={`px-4 py-2 rounded-2xl text-sm break-words whitespace-normal ${
                     message.isOwn
                       ? "bg-[#b91c1c] text-white rounded-br-md"
                       : "bg-white text-gray-800 rounded-bl-md shadow-sm"
                   }`}
+                  style={{ maxWidth: "100%", wordBreak: "break-word" }}
                 >
                   {message.content}
                 </div>

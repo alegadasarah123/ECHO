@@ -1,13 +1,9 @@
-
-
 import { useRouter } from "expo-router"
 import * as SecureStore from "expo-secure-store"
-import { useCallback, useState } from "react"
+import { useCallback, useState, useRef, useEffect } from "react"
 import {
-  Alert,
   Dimensions,
   Image,
-  Keyboard,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -16,23 +12,9 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
+  ActivityIndicator,
 } from "react-native"
-
-// Auth utility functions
-const logout = async () => {
-  try {
-    await SecureStore.deleteItemAsync("access_token")
-    await SecureStore.deleteItemAsync("refresh_token")
-    await SecureStore.deleteItemAsync("user_data")
-    await SecureStore.deleteItemAsync("selectedHorseData")
-    await SecureStore.deleteItemAsync("checkInData")
-    console.log("All tokens and user data cleared successfully")
-  } catch (error) {
-    console.error("Error clearing tokens:", error)
-  }
-}
 
 const { width, height } = Dimensions.get("window")
 const scale = (size: number) => (width / 375) * size
@@ -45,23 +27,77 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
+  const [emailError, setEmailError] = useState("")
+  const [passwordError, setPasswordError] = useState("")
+  const hasNavigated = useRef(false)
+  const loginAttempted = useRef(false)
+
+  // Clear email error when user types
+  const handleEmailChange = (text: string) => {
+    setEmail(text)
+    if (emailError) setEmailError("")
+  }
+
+  // Clear password error when user types
+  const handlePasswordChange = (text: string) => {
+    setPassword(text)
+    if (passwordError) setPasswordError("")
+  }
+
+  // Check if already logged in on mount
+  useEffect(() => {
+    const checkAlreadyLoggedIn = async () => {
+      try {
+        const accessToken = await SecureStore.getItemAsync("access_token")
+        const userData = await SecureStore.getItemAsync("user_data")
+        
+        if (accessToken && userData && !hasNavigated.current) {
+          const user = JSON.parse(userData)
+          const userRole = user.user_role?.trim()
+          
+          hasNavigated.current = true
+          
+          if (userRole === "Kutsero") {
+            router.replace("../KUTSERO/dashboard")
+          } else if (userRole === "Horse Operator") {
+            router.replace("../HORSE_OPERATOR/home")
+          }
+        }
+      } catch (error) {
+        console.error("Error checking login status:", error)
+      }
+    }
+    
+    checkAlreadyLoggedIn()
+  }, [])
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert("Error", "Please fill in all fields")
-      return
+    // Clear previous errors
+    setEmailError("")
+    setPasswordError("")
+    
+    // Prevent multiple login attempts
+    if (isLoginLoading || hasNavigated.current || loginAttempted.current) return
+    
+    let hasError = false
+    
+    if (!email) {
+      setEmailError("Email is required")
+      hasError = true
     }
+    
+    if (!password) {
+      setPasswordError("Password is required")
+      hasError = true
+    }
+    
+    if (hasError) return
 
+    loginAttempted.current = true
     setIsLoginLoading(true)
 
     try {
-      // Clear any existing tokens first to ensure fresh login
-      console.log("Clearing existing tokens...")
-      await logout()
-
       console.log("Attempting login for:", email.trim().toLowerCase())
-
-      //192.168.101.5:8000
 
       const response = await fetch("https://echo-ebl8.onrender.com/api/login_mobile/", {
         method: "POST",
@@ -75,38 +111,15 @@ export default function LoginScreen() {
       })
 
       const data = await response.json()
-      console.log("Login response status:", response.status)
-      console.log("Raw server response:", data)
-      console.log("Login response data:", {
-        message: data.message,
-        role: data.role,
-        user_role: data.user_role,
-        status: data.status,
-        user_status: data.user_status,
-        has_access_token: !!data.access_token,
-        has_refresh_token: !!data.refresh_token,
-        expires_in: data.expires_in,
-        user_email: data.user?.email,
-        has_profile: !!data.profile,
-      })
 
-      if (response.ok) {
-        // Store tokens securely in SecureStore
+      if (response.ok && !hasNavigated.current) {
+        // Store tokens
         if (data.access_token) {
           await SecureStore.setItemAsync("access_token", data.access_token)
-          console.log("✅ Access token stored successfully")
-        } else {
-          console.error("❌ No access token received")
         }
-
         if (data.refresh_token) {
           await SecureStore.setItemAsync("refresh_token", data.refresh_token)
-          console.log("✅ Refresh token stored successfully")
-        } else {
-          console.error("❌ No refresh token received")
         }
-
-        // Store user info for later use (including profile data)
         if (data.user) {
           const userDataToStore = {
             ...data.user,
@@ -114,81 +127,100 @@ export default function LoginScreen() {
             user_status: data.user_status,
             profile: data.profile,
           }
-
           await SecureStore.setItemAsync("user_data", JSON.stringify(userDataToStore))
-          console.log("✅ User data stored successfully:", {
-            hasProfile: !!data.profile,
-            user_role: data.user_role,
-            user_status: data.user_status,
-          })
         }
 
-        // Validate user role - Use the formatted user_role from backend
         const userRole = data.user_role?.trim()
-        console.log("Processing user role:", userRole)
-
+        
         if (!userRole) {
-          console.error("❌ No user role received")
-          console.log("Available data keys:", Object.keys(data))
-          Alert.alert("Error", "No user role found. Please contact support.")
+          setEmailError("No user role found. Please contact support.")
+          setIsLoginLoading(false)
+          loginAttempted.current = false
           return
         }
 
-        // Route based on user role - Check for exact database values
+        // Mark as navigated before routing
+        hasNavigated.current = true
+
+        // Route based on user role
         if (userRole === "Kutsero") {
-          console.log("✅ Routing to kutsero dashboard")
           router.replace("../KUTSERO/dashboard")
         } else if (userRole === "Horse Operator") {
-          console.log("✅ Routing to horse operator home")
           router.replace("../HORSE_OPERATOR/home")
         } else {
-          console.log("❌ Unrecognized user role:", userRole)
-          Alert.alert("Error", `Unrecognized user role: ${userRole}. Please contact support.`)
-          return
+          setEmailError(`Unrecognized user role: ${userRole}. Please contact support.`)
+          hasNavigated.current = false
+          setIsLoginLoading(false)
+          loginAttempted.current = false
         }
       } else {
-        // Handle login errors
-        console.error("❌ Login failed:", data.message || data.error || "Unknown error")
-
-        let errorMessage = "Login failed. Please try again."
-
-        if (data.message) {
-          errorMessage = data.message
-        } else if (data.error) {
-          errorMessage = data.error
-        } else if (response.status === 401) {
-          errorMessage = "Invalid email or password. Please check your credentials."
-        } else if (response.status >= 500) {
-          errorMessage = "Server error. Please try again later."
-        } else if (response.status >= 400) {
-          errorMessage = "Invalid request. Please check your input."
+        // Handle different error cases based on response status and message
+        if (response.status === 401) {
+          // Check if the error is about email not registered or incorrect password
+          if (data.message && data.message.toLowerCase().includes("email")) {
+            setEmailError("Email not registered")
+          } else if (data.message && (data.message.toLowerCase().includes("password") || data.message.toLowerCase().includes("invalid"))) {
+            setPasswordError("Incorrect password")
+          } else {
+            // Default 401 error handling
+            setPasswordError("Invalid email or password")
+          }
+        } else {
+          let errorMessage = "Login failed. Please try again."
+          
+          if (data.message) {
+            errorMessage = data.message
+            // Check specific error messages from the API
+            if (errorMessage.toLowerCase().includes("email") && !errorMessage.toLowerCase().includes("password")) {
+              setEmailError("Email not registered")
+            } else if (errorMessage.toLowerCase().includes("password")) {
+              setPasswordError("Incorrect password")
+            } else {
+              setPasswordError(errorMessage)
+            }
+          } else if (data.error) {
+            errorMessage = data.error
+            if (errorMessage.toLowerCase().includes("email") && !errorMessage.toLowerCase().includes("password")) {
+              setEmailError("Email not registered")
+            } else if (errorMessage.toLowerCase().includes("password")) {
+              setPasswordError("Incorrect password")
+            } else {
+              setPasswordError(errorMessage)
+            }
+          } else {
+            setPasswordError("Invalid email or password")
+          }
         }
-
-        Alert.alert("Login Error", errorMessage)
+        
+        setIsLoginLoading(false)
+        loginAttempted.current = false
       }
     } catch (error) {
       console.error("❌ Login error:", error)
-
       let errorMessage = "Network error. Please check your connection and try again."
-
+      
       if (error instanceof Error) {
         if (error.message.includes("Network request failed")) {
           errorMessage = "Unable to connect to server. Please check your internet connection."
         } else if (error.message.includes("timeout")) {
           errorMessage = "Request timed out. Please try again."
-        } else {
-          errorMessage = error.message
         }
       }
-
-      Alert.alert("Connection Error", errorMessage)
-    } finally {
+      
+      setPasswordError(errorMessage)
       setIsLoginLoading(false)
+      loginAttempted.current = false
     }
   }
 
   const handleForgotPassword = () => {
+    if (hasNavigated.current) return
     router.push("/auth/forgot-password")
+  }
+
+  const handleSignUp = () => {
+    if (hasNavigated.current || isLoginLoading) return
+    router.push("/auth/signup")
   }
 
   const togglePasswordVisibility = useCallback(() => {
@@ -203,88 +235,96 @@ export default function LoginScreen() {
         style={styles.keyboardView}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.contentContainer}>
-            <View style={styles.headerSection}>
-              <Image source={require("../../assets/images/echo.png")} style={styles.logo} resizeMode="contain" />
+        <View style={styles.contentContainer}>
+          <View style={styles.headerSection}>
+            <Image source={require("../../assets/images/echo.png")} style={styles.logo} resizeMode="contain" />
+          </View>
+
+          <View style={styles.formCard}>
+            <Text style={styles.welcomeTitle}>Welcome Back</Text>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Email</Text>
+              <TextInput
+                style={[styles.textInput, emailError ? styles.textInputError : null]}
+                placeholder="Enter your registered email"
+                placeholderTextColor="#999"
+                value={email}
+                onChangeText={handleEmailChange}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!isLoginLoading}
+              />
+              {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
             </View>
 
-            <View style={styles.formCard}>
-              <Text style={styles.welcomeTitle}>Welcome Back</Text>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Username</Text>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Password</Text>
+              <View style={[styles.passwordContainer, passwordError ? styles.passwordContainerError : null]}>
                 <TextInput
-                  style={styles.textInput}
-                  placeholder="Enter your email"
+                  style={styles.passwordInput}
+                  placeholder="Enter password"
                   placeholderTextColor="#999"
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
+                  value={password}
+                  onChangeText={handlePasswordChange}
+                  secureTextEntry={!showPassword}
                   autoCapitalize="none"
                   autoCorrect={false}
                   editable={!isLoginLoading}
                 />
+                <TouchableOpacity 
+                  style={styles.eyeIconContainer} 
+                  onPress={togglePasswordVisibility}
+                  disabled={isLoginLoading}
+                >
+                  <View style={styles.eyeIcon}>
+                    {showPassword ? (
+                      <View style={styles.eyeOpen}>
+                        <View style={styles.eyeball} />
+                      </View>
+                    ) : (
+                      <View style={styles.eyeClosed}>
+                        <View style={styles.eyeball} />
+                        <View style={styles.eyeLine} />
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
               </View>
+              {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
+            </View>
 
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Password</Text>
-                <View style={styles.passwordContainer}>
-                  <TextInput
-                    style={styles.passwordInput}
-                    placeholder="Enter your password"
-                    placeholderTextColor="#999"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry={!showPassword}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    editable={!isLoginLoading}
-                  />
-                  <TouchableOpacity style={styles.eyeIconContainer} onPress={togglePasswordVisibility}>
-                    <View style={styles.eyeIcon}>
-                      {showPassword ? (
-                        <View style={styles.eyeOpen}>
-                          <View style={styles.eyeball} />
-                        </View>
-                      ) : (
-                        <View style={styles.eyeClosed}>
-                          <View style={styles.eyeball} />
-                          <View style={styles.eyeLine} />
-                        </View>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                </View>
-              </View>
+            <TouchableOpacity 
+              style={styles.forgotPasswordButton} 
+              disabled={isLoginLoading}
+              onPress={handleForgotPassword}
+            >
+              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity 
-                style={styles.forgotPasswordButton} 
-                disabled={isLoginLoading}
-                onPress={handleForgotPassword}
-              >
-                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.loginButton, isLoginLoading && styles.loginButtonDisabled]}
+              onPress={handleLogin}
+              disabled={isLoginLoading}
+            >
+              {isLoginLoading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.loginButtonText}>Sign In</Text>
+              )}
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[styles.loginButton, isLoginLoading && styles.loginButtonDisabled]}
-                onPress={handleLogin}
-                disabled={isLoginLoading}
-              >
-                <Text style={styles.loginButtonText}>{isLoginLoading ? "Signing In..." : "Sign In"}</Text>
-              </TouchableOpacity>
-
-              <View style={styles.footerSection}>
-                <Text style={styles.footerText}>
-                  Don&#39;t have an account?{" "}
-                  <Text style={styles.signUpText} onPress={() => !isLoginLoading && router.push("/auth/signup")}>
-                    Sign Up
-                  </Text>
+            <View style={styles.footerSection}>
+              <Text style={styles.footerText}>
+                Don&#39;t have an account?{" "}
+                <Text style={styles.signUpText} onPress={handleSignUp}>
+                  Sign Up
                 </Text>
-              </View>
+              </Text>
             </View>
           </View>
-        </TouchableWithoutFeedback>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   )
@@ -298,7 +338,7 @@ const styles = StyleSheet.create({
   keyboardView: {
     flex: 1,
   },
-   contentContainer: {
+  contentContainer: {
     flex: 1,
     paddingHorizontal: scale(20),
     paddingTop: verticalScale(15),
@@ -313,12 +353,6 @@ const styles = StyleSheet.create({
     width: scale(250),
     height: scale(250),
     marginBottom: 0,
-  },
-  echoText: {
-    fontSize: moderateScale(32),
-    fontWeight: "bold",
-    color: "#2C1810",
-    letterSpacing: 2,
   },
   formCard: {
     backgroundColor: "#FFFFFF",
@@ -361,6 +395,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     color: "#333",
   },
+  textInputError: {
+    borderColor: "#FF3B30",
+    borderWidth: 1.5,
+  },
   passwordContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -369,6 +407,10 @@ const styles = StyleSheet.create({
     borderRadius: moderateScale(25),
     backgroundColor: "#FFFFFF",
     height: verticalScale(48),
+  },
+  passwordContainerError: {
+    borderColor: "#FF3B30",
+    borderWidth: 1.5,
   },
   passwordInput: {
     flex: 1,
@@ -465,5 +507,11 @@ const styles = StyleSheet.create({
   signUpText: {
     color: "#B8763E",
     fontWeight: "600",
+  },
+  errorText: {
+    color: "#FF3B30",
+    fontSize: moderateScale(12),
+    marginTop: verticalScale(5),
+    marginLeft: scale(15),
   },
 })

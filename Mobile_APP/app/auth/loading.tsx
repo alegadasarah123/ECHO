@@ -2,7 +2,7 @@
 "use client"
 
 import { useRouter } from "expo-router"
-import { useEffect, useRef } from "react"
+import { useEffect, useRef } from "react"  // ADD useState here
 import {
   Animated,
   Dimensions,
@@ -11,6 +11,7 @@ import {
   StatusBar,
   StyleSheet,
   View,
+  Text,
 } from "react-native"
 import * as SecureStore from "expo-secure-store"
 
@@ -20,20 +21,45 @@ const verticalScale = (size: number) => (height / 812) * size
 
 export default function LoadingScreen() {
   const router = useRouter()
+  const hasNavigated = useRef(false)  // ADD THIS
   const fadeAnim = useRef(new Animated.Value(0)).current
   const scaleAnim = useRef(new Animated.Value(0.3)).current
-  const translateY = useRef(new Animated.Value(0)).current
+  const pulseAnim = useRef(new Animated.Value(1)).current
+  const textFadeAnim = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
     checkAuthAndAnimate()
+    startPulseAnimation()
+    
+    // ADD CLEANUP
+    return () => {
+      hasNavigated.current = true
+    }
   }, [])
+
+  const startPulseAnimation = () => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.08,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start()
+  }
 
   const checkAuthAndAnimate = async () => {
     // Initial fade in and scale animation
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 800,
+        duration: 1000,
         useNativeDriver: true,
       }),
       Animated.spring(scaleAnim, {
@@ -42,46 +68,41 @@ export default function LoadingScreen() {
         tension: 40,
         useNativeDriver: true,
       }),
+      Animated.timing(textFadeAnim, {
+        toValue: 1,
+        duration: 1500,
+        useNativeDriver: true,
+      }),
     ]).start()
 
-    // Check if user is already logged in
     try {
       const accessToken = await SecureStore.getItemAsync("access_token")
       const userData = await SecureStore.getItemAsync("user_data")
 
-      // Wait for initial animation to complete
-      await new Promise(resolve => setTimeout(resolve, 3000))
+      await new Promise(resolve => setTimeout(resolve, 8000))
 
-      // Calculate the distance to move the logo up
-      const centerY = height / 2
-      const targetY = verticalScale(40) + scale(75) // Position where logo should be in login screen
-      const distance = -(centerY - targetY)
+      // ADD CHECK HERE
+      if (hasNavigated.current) return
 
-      // Start transition animation - move up and fade out
       Animated.parallel([
-        Animated.timing(translateY, {
-          toValue: distance,
-          duration: 600,
-          useNativeDriver: true,
-        }),
         Animated.timing(fadeAnim, {
           toValue: 0,
           duration: 400,
-          delay: 200,
           useNativeDriver: true,
         }),
-        Animated.timing(scaleAnim, {
-          toValue: 0.8,
-          duration: 600,
+        Animated.timing(textFadeAnim, {
+          toValue: 0,
+          duration: 400,
           useNativeDriver: true,
         }),
       ]).start(() => {
-        // Navigate based on auth status
+        if (hasNavigated.current) return
+        hasNavigated.current = true
+        
         if (accessToken && userData) {
           const user = JSON.parse(userData)
           const userRole = user.user_role?.trim()
 
-          // Route to appropriate dashboard if logged in
           if (userRole === "Kutsero") {
             router.replace("../KUTSERO/dashboard")
           } else if (userRole === "Horse Operator") {
@@ -90,13 +111,15 @@ export default function LoadingScreen() {
             router.replace("/auth/login")
           }
         } else {
-          // Not logged in, go to login
           router.replace("/auth/login")
         }
       })
     } catch (error) {
       console.error("Error checking auth:", error)
-      router.replace("/auth/login")
+      if (!hasNavigated.current) {
+        hasNavigated.current = true
+        router.replace("/auth/login")
+      }
     }
   }
 
@@ -104,7 +127,6 @@ export default function LoadingScreen() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#D4935C" />
       
-      {/* Gradient overlay effect */}
       <View style={styles.gradientOverlay} />
       
       <View style={styles.content}>
@@ -113,18 +135,21 @@ export default function LoadingScreen() {
             styles.logoContainer,
             {
               opacity: fadeAnim,
-              transform: [
-                { scale: scaleAnim },
-                { translateY: translateY },
-              ],
+              transform: [{ scale: scaleAnim }],
             },
           ]}
         >
-          <Image
-            source={require("../../assets/images/echo.png")}
-            style={styles.logo}
-            resizeMode="contain"
-          />
+          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+            <Image
+              source={require("../../assets/images/echo.png")}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </Animated.View>
+        </Animated.View>
+        
+        <Animated.View style={[styles.loadingTextContainer, { opacity: textFadeAnim }]}>
+          <Text style={styles.loadingText}>Loading...</Text>
         </Animated.View>
       </View>
     </SafeAreaView>
@@ -156,5 +181,16 @@ const styles = StyleSheet.create({
   logo: {
     width: scale(200),
     height: scale(200),
+  },
+  loadingTextContainer: {
+    position: "absolute",
+    bottom: verticalScale(80),
+    alignItems: "center",
+  },
+  loadingText: {
+    fontSize: scale(16),
+    color: "#FFFFFF",
+    fontWeight: "500",
+    letterSpacing: 1,
   },
 })

@@ -2,7 +2,6 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "expo-router"
 import {
-  Alert,
   Dimensions,
   SafeAreaView,
   ScrollView,
@@ -17,16 +16,38 @@ import {
   Image,
   Platform,
   ActivityIndicator,
+  Animated,
 } from "react-native"
 import DateTimePicker from "@react-native-community/datetimepicker"
 import * as ImagePicker from "expo-image-picker"
 import * as FileSystem from 'expo-file-system/legacy'
+import { Ionicons } from '@expo/vector-icons'
 
 const { width, height } = Dimensions.get("window")
 
 // Responsive scaling functions
 const scale = (size: number) => (width / 375) * size
 const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor
+
+// Toast Component
+const Toast = ({ message, type, visible, onHide }: { message: string; type: 'error' | 'success'; visible: boolean; onHide: () => void }) => {
+  useEffect(() => {
+    if (visible) {
+      const timer = setTimeout(() => {
+        onHide()
+      }, 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [visible])
+
+  if (!visible) return null
+
+  return (
+    <Animated.View style={[styles.toastContainer, type === 'error' ? styles.toastError : styles.toastSuccess]}>
+      <Text style={styles.toastText}>{message}</Text>
+    </Animated.View>
+  )
+}
 
 // Custom hook for Philippine locations
 const usePhilippinesLocations = () => {
@@ -447,6 +468,11 @@ export default function Signup() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [membershipDocument, setMembershipDocument] = useState<DocumentFile | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: 'error' | 'success'; visible: boolean }>({
+    message: '',
+    type: 'error',
+    visible: false,
+  })
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [passwordStrength, setPasswordStrength] = useState({ strength: "", score: 0, color: "#E0E0E0" })
@@ -487,6 +513,14 @@ export default function Signup() {
     membershipStatus: "pending",
     membershipNotes: "",
   })
+
+  const showToast = (message: string, type: 'error' | 'success' = 'error') => {
+    setToast({ message, type, visible: true })
+  }
+
+  const hideToast = () => {
+    setToast(prev => ({ ...prev, visible: false }))
+  }
 
   // Load cities when province changes
   useEffect(() => {
@@ -586,104 +620,120 @@ export default function Signup() {
       case 1:
         if (!formData.role) {
           newErrors.role = "Please select your role"
-          Alert.alert("Error", "Please select your role to continue")
+          showToast("Please select your role to continue")
         }
         break
 
       case 2:
         if (!formData.firstName.trim()) {
           newErrors.firstName = "First name is required"
+          showToast("First name is required")
         }
         if (!formData.lastName.trim()) {
           newErrors.lastName = "Last name is required"
+          if (!newErrors.firstName) showToast("Last name is required")
         }
         if (!formData.sex) {
           newErrors.sex = "Please select your sex"
+          if (!newErrors.firstName && !newErrors.lastName) showToast("Please select your sex")
         }
         if (!formData.phoneNumber.trim()) {
           newErrors.phoneNumber = "Phone number is required"
+          if (!newErrors.firstName && !newErrors.lastName && !newErrors.sex) showToast("Phone number is required")
         } else if (!isValidPhoneNumber(formData.phoneNumber)) {
           newErrors.phoneNumber = "Invalid phone number format (use 09xxxxxxxxx)"
+          showToast("Invalid phone number format (use 09xxxxxxxxx)")
         }
 
         const age = calculateAge(formData.dateOfBirth)
         if (age < 18) {
           newErrors.dateOfBirth = "You must be at least 18 years old"
-          Alert.alert("Age Requirement", "You must be at least 18 years old to register for ECHO.", [{ text: "OK" }])
+          showToast("You must be at least 18 years old to register for ECHO.")
         }
         break
 
       case 3:
         if (!formData.province) {
           newErrors.province = "Province is required"
+          showToast("Province is required")
         }
         if (!formData.city) {
           newErrors.city = "City/Municipality is required"
+          if (!newErrors.province) showToast("City/Municipality is required")
         }
         if (!formData.barangay.trim()) {
           newErrors.barangay = "Barangay is required"
+          if (!newErrors.province && !newErrors.city) showToast("Barangay is required")
         }
         if (!formData.zipCode.trim()) {
           newErrors.zipCode = "Zip code is required"
+          if (!newErrors.province && !newErrors.city && !newErrors.barangay) showToast("Zip code is required")
         } else if (!/^\d{4}$/.test(formData.zipCode)) {
           newErrors.zipCode = "Zip code must be 4 digits"
+          showToast("Zip code must be 4 digits")
         }
         break
 
       case 4:
         if (!formData.isMember) {
           newErrors.isMember = "Please select your membership status"
+          showToast("Please select your membership status")
         }
         
         if (formData.isMember === "no") {
           if (!membershipDocument) {
             newErrors.membershipDocument = "Please upload a document for membership application"
+            showToast("Please upload a document for membership application")
           }
         } else if (formData.isMember === "yes") {
           if (!membershipDocument) {
             newErrors.membershipDocument = "Please upload your membership document for verification"
+            showToast("Please upload your membership document for verification")
           }
         }
         
         if (!formData.yearsExperience) {
           newErrors.yearsExperience = "Years of experience is required"
+          showToast("Years of experience is required")
         } else if (!/^\d+$/.test(formData.yearsExperience)) {
           newErrors.yearsExperience = "Please enter a valid number"
+          showToast("Please enter a valid number")
         } else if (parseInt(formData.yearsExperience) > 60) {
           newErrors.yearsExperience = "Please enter a realistic number of years"
+          showToast("Please enter a realistic number of years")
         }
         break
 
       case 5:
         if (!formData.email.trim()) {
           newErrors.email = "Email is required"
+          showToast("Email is required")
         } else if (!isValidEmail(formData.email)) {
           newErrors.email = "Please enter a valid email address"
+          showToast("Please enter a valid email address")
         }
 
         if (!formData.password) {
           newErrors.password = "Password is required"
+          if (!newErrors.email) showToast("Password is required")
         } else if (formData.password.length < 8) {
           newErrors.password = "Password must be at least 8 characters"
+          showToast("Password must be at least 8 characters")
         }
 
         if (!formData.confirmPassword) {
           newErrors.confirmPassword = "Please confirm your password"
+          if (!newErrors.email && !newErrors.password) showToast("Please confirm your password")
         } else if (formData.password !== formData.confirmPassword) {
           newErrors.confirmPassword = "Passwords do not match"
+          showToast("Passwords do not match")
         }
         break
     }
 
     setErrors(newErrors)
 
-    if (Object.keys(newErrors).length > 0) {
-      const firstError = Object.values(newErrors)[0]
-      Alert.alert("Validation Error", firstError)
-      return false
-    }
-
-    return true
+    return Object.keys(newErrors).length === 0
   }
 
   const nextStep = () => {
@@ -714,20 +764,8 @@ export default function Signup() {
   }
 
   const handleImagePicker = async () => {
-    Alert.alert("Select Profile Photo", "Choose how you'd like to add your profile picture", [
-      {
-        text: "Camera",
-        onPress: () => openCamera(),
-      },
-      {
-        text: "Photo Library",
-        onPress: () => openImageLibrary(),
-      },
-      {
-        text: "Cancel",
-        style: "cancel",
-      },
-    ])
+    showToast("Choose how you'd like to add your profile picture", 'success')
+    openCamera()
   }
 
   const openCamera = async () => {
@@ -735,7 +773,7 @@ export default function Signup() {
       const { status } = await ImagePicker.requestCameraPermissionsAsync()
 
       if (status !== "granted") {
-        Alert.alert("Permission Denied", "Camera permission is required to take photos.")
+        showToast("Camera permission is required to take photos.")
         return
       }
 
@@ -760,10 +798,11 @@ export default function Signup() {
         }
 
         updateFormData("profilePicture", profilePictureData)
+        showToast("Profile photo added successfully!", 'success')
       }
     } catch (error) {
       console.error("Camera error:", error)
-      Alert.alert("Error", "Failed to open camera. Please try again.")
+      showToast("Failed to open camera. Please try again.")
     }
   }
 
@@ -772,7 +811,7 @@ export default function Signup() {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
 
       if (status !== "granted") {
-        Alert.alert("Permission Denied", "Photo library permission is required to select photos.")
+        showToast("Photo library permission is required to select photos.")
         return
       }
 
@@ -797,10 +836,11 @@ export default function Signup() {
         }
 
         updateFormData("profilePicture", profilePictureData)
+        showToast("Profile photo added successfully!", 'success')
       }
     } catch (error) {
       console.error("Image picker error:", error)
-      Alert.alert("Error", "Failed to open photo library. Please try again.")
+      showToast("Failed to open photo library. Please try again.")
     }
   }
 
@@ -839,11 +879,11 @@ export default function Signup() {
         setMembershipDocument(documentData);
         updateFormData("membershipDocument", documentData);
         
-        Alert.alert("Success", "Document image uploaded successfully!");
+        showToast("Document image uploaded successfully!", 'success');
       }
     } catch (error) {
       console.error("Document picker error:", error);
-      Alert.alert("Error", "Failed to upload document image. Please try again.");
+      showToast("Failed to upload document image. Please try again.");
     }
   };
 
@@ -886,7 +926,7 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
     if (isLoading) return
 
     if (!formData.termsAccepted) {
-      Alert.alert("Error", "Please accept the Terms and Conditions to continue")
+      showToast("Please accept the Terms and Conditions to continue")
       return
     }
 
@@ -929,7 +969,7 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors)
       const firstError = Object.values(validationErrors)[0]
-      Alert.alert("Validation Error", firstError)
+      showToast(firstError)
       return
     }
 
@@ -944,7 +984,7 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
           console.log("Profile image converted successfully")
         } catch (error) {
           console.error("Error converting profile image:", error)
-          Alert.alert("Error", "Failed to process profile picture. Please try again.")
+          showToast("Failed to process profile picture. Please try again.")
           setIsLoading(false)
           return
         }
@@ -967,7 +1007,7 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
           });
         } catch (error) {
           console.error("Error converting membership document:", error)
-          Alert.alert("Error", "Failed to process membership document. Please try again.")
+          showToast("Failed to process membership document. Please try again.")
           setIsLoading(false)
           return
         }
@@ -1040,50 +1080,43 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
         const result = await response.json()
         console.log("Signup successful:", result)
 
-        Alert.alert(
-          "Success!",
-          "Your account has been created successfully. Please check your email for verification and wait for admin approval.",
-          [
-            {
-              text: "OK",
-              onPress: () => {
-                // Reset form
-                setFormData({
-                  firstName: "",
-                  lastName: "",
-                  middleName: "",
-                  email: "",
-                  password: "",
-                  confirmPassword: "",
-                  phoneNumber: "",
-                  birthDate: "",
-                  dateOfBirth: new Date(),
-                  profilePicture: null,
-                  sex: "",
-                  role: "",
-                  province: "",
-                  city: "",
-                  municipality: "",
-                  barangay: "",
-                  zipCode: "",
-                  termsAccepted: false,
-                  isMember: "",
-                  membershipDocument: null,
-                  yearsExperience: "",
-                  applyingForMembership: false,
-                  membershipStatus: "pending",
-                  membershipNotes: "",
-                })
-                setSelectedImage(null)
-                setMembershipDocument(null)
-                setCurrentStep(1)
-                setErrors({})
-                setPasswordStrength({ strength: "", score: 0, color: "#E0E0E0" })
-                router.replace("/auth/login")
-              },
-            },
-          ],
-        )
+        showToast("Account created successfully! Please check your email for verification.", 'success')
+        
+        setTimeout(() => {
+          // Reset form
+          setFormData({
+            firstName: "",
+            lastName: "",
+            middleName: "",
+            email: "",
+            password: "",
+            confirmPassword: "",
+            phoneNumber: "",
+            birthDate: "",
+            dateOfBirth: new Date(),
+            profilePicture: null,
+            sex: "",
+            role: "",
+            province: "",
+            city: "",
+            municipality: "",
+            barangay: "",
+            zipCode: "",
+            termsAccepted: false,
+            isMember: "",
+            membershipDocument: null,
+            yearsExperience: "",
+            applyingForMembership: false,
+            membershipStatus: "pending",
+            membershipNotes: "",
+          })
+          setSelectedImage(null)
+          setMembershipDocument(null)
+          setCurrentStep(1)
+          setErrors({})
+          setPasswordStrength({ strength: "", score: 0, color: "#E0E0E0" })
+          router.replace("/auth/login")
+        }, 2000)
       } else {
         const errorText = await response.text()
         console.log("Signup error response:", errorText)
@@ -1097,17 +1130,14 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
               errorData.message.toLowerCase().includes("exists") ||
               errorData.message.toLowerCase().includes("taken")
             ) {
-              Alert.alert("Email Already Used", "A user with that email already exists.", [
-                { text: "Try Again", style: "cancel" },
-                { text: "Go to Login", onPress: () => router.replace("/auth/login") },
-              ])
+              showToast("A user with that email already exists.")
               setErrors({ email: "A user with that email already exists" })
               setCurrentStep(5) // Go back to credentials step
               return
             }
           }
 
-          Alert.alert("Registration Error", errorData.message || "Failed to create account. Please try again.")
+          showToast(errorData.message || "Failed to create account. Please try again.")
         } catch {
           let errorMessage = "Failed to create account. Please try again."
 
@@ -1121,18 +1151,18 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
             errorMessage = "Server error. Please try again later."
           }
 
-          Alert.alert("Error", errorMessage)
+          showToast(errorMessage)
         }
       }
     } catch (error: any) {
       console.error("Signup error:", error)
 
       if (error.name === "AbortError") {
-        Alert.alert("Request Timeout", "The request took too long. Please check your connection and try again.")
+        showToast("The request took too long. Please check your connection and try again.")
       } else if (error.message.includes("Network")) {
-        Alert.alert("Network Error", "Unable to connect to the server. Please check your internet connection.")
+        showToast("Unable to connect to the server. Please check your internet connection.")
       } else {
-        Alert.alert("Unexpected Error", "Something went wrong. Please try again later.")
+        showToast("Something went wrong. Please try again later.")
       }
     } finally {
       setIsLoading(false)
@@ -1242,16 +1272,18 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
           ))}
         </View>
 
-        <TouchableOpacity style={styles.nextButton} onPress={nextStep}>
-          <Text style={styles.nextButtonText}>Next</Text>
-        </TouchableOpacity>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.nextButton} onPress={nextStep}>
+            <Text style={styles.nextButtonText}>Next</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.signInLinkContainer}>
           <Text style={styles.signInText}>
             Already have an account?{" "}
-            <TouchableOpacity onPress={handleBackToLogin} style={styles.signInTouchable}>
-              <Text style={styles.signInLink}>Sign in</Text>
-            </TouchableOpacity>
+            <Text style={styles.signInLink} onPress={handleBackToLogin}>
+              Sign in
+            </Text>
           </Text>
         </View>
       </ScrollView>
@@ -1353,7 +1385,7 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
         <View style={styles.signInLinkContainer}>
           <Text style={styles.signInText}>
             Already have an account?{" "}
-            <TouchableOpacity onPress={handleBackToLogin} style={styles.signInTouchable}>
+            <TouchableOpacity onPress={handleBackToLogin}>
               <Text style={styles.signInLink}>Sign in</Text>
             </TouchableOpacity>
           </Text>
@@ -1444,7 +1476,7 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
         <View style={styles.signInLinkContainer}>
           <Text style={styles.signInText}>
             Already have an account?{" "}
-            <TouchableOpacity onPress={handleBackToLogin} style={styles.signInTouchable}>
+            <TouchableOpacity onPress={handleBackToLogin}>
               <Text style={styles.signInLink}>Sign in</Text>
             </TouchableOpacity>
           </Text>
@@ -1593,7 +1625,7 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
         <View style={styles.signInLinkContainer}>
           <Text style={styles.signInText}>
             Already have an account?{" "}
-            <TouchableOpacity onPress={handleBackToLogin} style={styles.signInTouchable}>
+            <TouchableOpacity onPress={handleBackToLogin}>
               <Text style={styles.signInLink}>Sign in</Text>
             </TouchableOpacity>
           </Text>
@@ -1634,18 +1666,7 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
             editable={!isLoading}
           />
           <TouchableOpacity style={styles.eyeIconContainer} onPress={() => setShowPassword(!showPassword)}>
-            <View style={styles.eyeIcon}>
-              {showPassword ? (
-                <View style={styles.eyeOpen}>
-                  <View style={styles.eyeball} />
-                </View>
-              ) : (
-                <View style={styles.eyeClosed}>
-                  <View style={styles.eyeball} />
-                  <View style={styles.eyeLine} />
-                </View>
-              )}
-            </View>
+            <Ionicons name={showPassword ? "eye-off" : "eye"} size={20} color="#666" />
           </TouchableOpacity>
         </View>
 
@@ -1690,18 +1711,7 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
             style={styles.eyeIconContainer}
             onPress={() => setShowConfirmPassword(!showConfirmPassword)}
           >
-            <View style={styles.eyeIcon}>
-              {showConfirmPassword ? (
-                <View style={styles.eyeOpen}>
-                  <View style={styles.eyeball} />
-                </View>
-              ) : (
-                <View style={styles.eyeClosed}>
-                  <View style={styles.eyeball} />
-                  <View style={styles.eyeLine} />
-                </View>
-              )}
-            </View>
+            <Ionicons name={showConfirmPassword ? "eye-off" : "eye"} size={20} color="#666" />
           </TouchableOpacity>
         </View>
         {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
@@ -1727,7 +1737,7 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
       <View style={styles.signInLinkContainer}>
         <Text style={styles.signInText}>
           Already have an account?{" "}
-          <TouchableOpacity onPress={handleBackToLogin} style={styles.signInTouchable}>
+          <TouchableOpacity onPress={handleBackToLogin}>
             <Text style={styles.signInLink}>Sign in</Text>
           </TouchableOpacity>
         </Text>
@@ -1801,7 +1811,7 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
       <View style={styles.signInLinkContainer}>
         <Text style={styles.signInText}>
           Already have an account?{" "}
-          <TouchableOpacity onPress={handleBackToLogin} style={styles.signInTouchable}>
+          <TouchableOpacity onPress={handleBackToLogin}>
             <Text style={styles.signInLink}>Sign in</Text>
           </TouchableOpacity>
         </Text>
@@ -1976,7 +1986,7 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
       <View style={styles.signInLinkContainer}>
         <Text style={styles.signInText}>
           Already have an account?{" "}
-          <TouchableOpacity onPress={handleBackToLogin} style={styles.signInTouchable}>
+          <TouchableOpacity onPress={handleBackToLogin}>
             <Text style={styles.signInLink}>Sign in</Text>
           </TouchableOpacity>
         </Text>
@@ -2012,7 +2022,7 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
       <View style={styles.headerSection}>
         <View style={styles.headerContent}>
           <TouchableOpacity style={styles.backButton} onPress={handleBackToLogin}>
-            <Text style={styles.backButtonText}>←</Text>
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Sign Up</Text>
           <View style={styles.placeholder} />
@@ -2031,6 +2041,13 @@ const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
       </View>
 
       <View style={styles.contentSection}>{renderCurrentStep()}</View>
+      
+      <Toast 
+        message={toast.message} 
+        type={toast.type} 
+        visible={toast.visible} 
+        onHide={hideToast} 
+      />
     </SafeAreaView>
   )
 }
@@ -2042,7 +2059,7 @@ const styles = StyleSheet.create({
   },
   headerSection: {
     backgroundColor: "#B8763E",
-    paddingTop: moderateScale(10),
+    paddingTop: moderateScale(Platform.OS === 'ios' ? 50 : 40),
     paddingBottom: moderateScale(20),
     paddingHorizontal: moderateScale(20),
   },
@@ -2055,15 +2072,8 @@ const styles = StyleSheet.create({
   backButton: {
     width: moderateScale(40),
     height: moderateScale(40),
-    borderRadius: moderateScale(20),
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
     justifyContent: "center",
     alignItems: "center",
-  },
-  backButtonText: {
-    color: "#FFFFFF",
-    fontSize: moderateScale(18),
-    fontWeight: "bold",
   },
   headerTitle: {
     color: "#FFFFFF",
@@ -2469,45 +2479,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: moderateScale(15),
     paddingVertical: moderateScale(12),
   },
-  eyeIcon: {
-    width: moderateScale(20),
-    height: moderateScale(20),
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  eyeOpen: {
-    width: moderateScale(16),
-    height: moderateScale(12),
-    borderWidth: 2,
-    borderColor: "#666666",
-    borderRadius: moderateScale(8),
-    justifyContent: "center",
-    alignItems: "center",
-    position: "relative",
-  },
-  eyeClosed: {
-    width: moderateScale(16),
-    height: moderateScale(12),
-    borderWidth: 2,
-    borderColor: "#666666",
-    borderRadius: moderateScale(8),
-    justifyContent: "center",
-    alignItems: "center",
-    position: "relative",
-  },
-  eyeball: {
-    width: moderateScale(6),
-    height: moderateScale(6),
-    backgroundColor: "#666666",
-    borderRadius: moderateScale(3),
-  },
-  eyeLine: {
-    position: "absolute",
-    width: moderateScale(18),
-    height: 2,
-    backgroundColor: "#666666",
-    transform: [{ rotate: "45deg" }],
-  },
   profilePictureContainer: {
     alignItems: "center",
     marginVertical: moderateScale(30),
@@ -2591,16 +2562,18 @@ const styles = StyleSheet.create({
   buttonRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: moderateScale(0),
     marginTop: moderateScale(30),
     marginBottom: moderateScale(20),
+    gap: moderateScale(15),
   },
   prevButton: {
     backgroundColor: "#F0F0F0",
     paddingVertical: moderateScale(12),
-    paddingHorizontal: moderateScale(30),
+    paddingHorizontal: moderateScale(20),
     borderRadius: moderateScale(8),
-    flex: 0.45,
+    flex: 1,
     alignItems: "center",
   },
   prevButtonText: {
@@ -2611,9 +2584,9 @@ const styles = StyleSheet.create({
   nextButton: {
     backgroundColor: "#B8763E",
     paddingVertical: moderateScale(12),
-    paddingHorizontal: moderateScale(30),
+    paddingHorizontal: moderateScale(20),
     borderRadius: moderateScale(8),
-    flex: 0.45,
+    flex: 1,
     alignItems: "center",
   },
   nextButtonText: {
@@ -2624,9 +2597,9 @@ const styles = StyleSheet.create({
   signUpButton: {
     backgroundColor: "#B8763E",
     paddingVertical: moderateScale(12),
-    paddingHorizontal: moderateScale(30),
+    paddingHorizontal: moderateScale(20),
     borderRadius: moderateScale(8),
-    flex: 0.45,
+    flex: 1,
     alignItems: "center",
   },
   signUpButtonText: {
@@ -2637,26 +2610,24 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.6,
   },
-  signInLinkContainer: {
-    alignItems: "center",
-    marginTop: moderateScale(20),
-    marginBottom: moderateScale(30),
-  },
-  signInText: {
-    fontSize: moderateScale(14),
-    color: "#666666",
-    textAlign: "center",
-  },
-  signInTouchable: {
-    marginLeft: moderateScale(2),
-  },
-  signInLink: {
-    fontSize: moderateScale(14),
-    color: "#B8763E",
-    fontWeight: "600",
-    textDecorationLine: "underline",
-  },
-  termsScrollView: {
+signInLinkContainer: {
+  flexDirection: "row",
+  justifyContent: "center",
+  alignItems: "center",
+  marginTop: moderateScale(20),
+  marginBottom: moderateScale(30),
+  flexWrap: "wrap",
+},
+signInText: {
+  fontSize: moderateScale(14),
+  color: "#666666",
+},
+signInLink: {
+  fontSize: moderateScale(14),
+  color: "#B8763E",
+  fontWeight: "600",
+  textDecorationLine: "underline",
+},  termsScrollView: {
     flex: 1,
     backgroundColor: "#F9F9F9",
     borderRadius: moderateScale(10),
@@ -2758,5 +2729,33 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(12),
     fontWeight: "600",
     textAlign: "right",
+  },
+  toastContainer: {
+    position: 'absolute',
+    bottom: moderateScale(20),
+    left: moderateScale(20),
+    right: moderateScale(20),
+    padding: moderateScale(12),
+    borderRadius: moderateScale(8),
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  toastError: {
+    backgroundColor: '#FF4444',
+  },
+  toastSuccess: {
+    backgroundColor: '#4CAF50',
+  },
+  toastText: {
+    color: '#FFFFFF',
+    fontSize: moderateScale(14),
+    fontWeight: '500',
+    textAlign: 'center',
   },
 })
