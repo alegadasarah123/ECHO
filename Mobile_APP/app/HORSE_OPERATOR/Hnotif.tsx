@@ -1929,7 +1929,7 @@ export default function NotificationsPage() {
                       {notification.type === 'feed' ? 'Feed Notification' :
                        notification.type === 'water' ? 'Water Notification' :
                        notification.type === 'reminder' ? 'Reminder' :
-                       notification.type === 'health' ? 'Health Alert' :
+                       notification.type === 'health' ? 'Announcement' :
                        'Smart Stable'}
                     </Text>
                     <Text style={styles.notificationTime}>{notification.time}</Text>

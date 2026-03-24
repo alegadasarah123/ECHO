@@ -1,7 +1,5 @@
 // HORSE_OPERATOR/home.tsx
 
-
-
 import React, { useState, useEffect, useCallback, useRef } from "react"
 import {
   View,
@@ -1938,7 +1936,7 @@ export default function HorseOperatorHome() {
             onPress={() => router.push("../HORSE_OPERATOR/horse")}
           />
           <TabButton
-            iconSource={require("../../assets/images/kutsero.png")}
+            iconSource={require("../../assets/images/kutserotab.png")}
             label="Kutsero"
             tabKey="kutsero"
             isActive={activeTab === "kutsero"}

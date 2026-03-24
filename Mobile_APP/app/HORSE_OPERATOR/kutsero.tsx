@@ -1397,7 +1397,7 @@ const KutseroManagementScreen = () => {
           onPress={() => router.push("../HORSE_OPERATOR/horse" as any)}
         />
         <TabButton
-          iconSource={require("../../assets/images/kutsero.png")}
+          iconSource={require("../../assets/images/kutserotab.png")}
           label="Kutsero"
           tabKey="kutsero"
           isActive={activeBottomTab === "kutsero"}

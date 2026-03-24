@@ -812,36 +812,36 @@ const CalendarScreen = () => {
     [userId, appointments, selectedAppointment?.app_id, fetchAppointments, saveAppointmentsToCache],
   )
 
-  const canRescheduleAppointment = useCallback((appointment: Appointment) => {
-    if (!appointment.created_at) {
-      console.warn("No creation timestamp found, allowing reschedule")
-      return { canReschedule: true, reason: "" }
-    }
+  // const canRescheduleAppointment = useCallback((appointment: Appointment) => {
+  //   if (!appointment.created_at) {
+  //     console.warn("No creation timestamp found, allowing reschedule")
+  //     return { canReschedule: true, reason: "" }
+  //   }
 
-    try {
-      const createdTime = new Date(appointment.created_at)
-      const currentTime = new Date()
-      const timeDifference = currentTime.getTime() - createdTime.getTime()
-      const hoursDifference = timeDifference / (1000 * 60 * 60)
+  //   try {
+  //     const createdTime = new Date(appointment.created_at)
+  //     const currentTime = new Date()
+  //     const timeDifference = currentTime.getTime() - createdTime.getTime()
+  //     const hoursDifference = timeDifference / (1000 * 60 * 60)
 
-      if (hoursDifference > 1) {
-        const hoursPassedFormatted = hoursDifference.toFixed(1)
-        return {
-          canReschedule: false,
-          reason: `Reschedule period expired. ${hoursPassedFormatted} hours have passed since booking. Reschedule is only allowed within 1 hour of booking.`,
-        }
-      }
+  //     if (hoursDifference > 1) {
+  //       const hoursPassedFormatted = hoursDifference.toFixed(1)
+  //       return {
+  //         canReschedule: false,
+  //         reason: `Reschedule period expired. ${hoursPassedFormatted} hours have passed since booking. Reschedule is only allowed within 1 hour of booking.`,
+  //       }
+  //     }
 
-      const remainingMinutes = Math.max(0, 60 - timeDifference / (1000 * 60))
-      return {
-        canReschedule: true,
-        reason: `${Math.floor(remainingMinutes)} minutes remaining to reschedule`,
-      }
-    } catch (error) {
-      console.error("Error checking reschedule eligibility:", error)
-      return { canReschedule: true, reason: "" }
-    }
-  }, [])
+  //     const remainingMinutes = Math.max(0, 60 - timeDifference / (1000 * 60))
+  //     return {
+  //       canReschedule: true,
+  //       reason: `${Math.floor(remainingMinutes)} minutes remaining to reschedule`,
+  //     }
+  //   } catch (error) {
+  //     console.error("Error checking reschedule eligibility:", error)
+  //     return { canReschedule: true, reason: "" }
+  //   }
+  // }, [])
 
   // Initial data load - only once on mount
   useEffect(() => {
@@ -1660,7 +1660,7 @@ const CalendarScreen = () => {
               </View>
             )}
 
-            {selectedAppointment.status !== "cancelled" &&
+            {/* {selectedAppointment.status !== "cancelled" &&
               selectedAppointment.status !== "approved" &&
               selectedAppointment.status !== "declined" && (
                 <View>
@@ -1687,7 +1687,7 @@ const CalendarScreen = () => {
                     return null
                   })()}
                 </View>
-              )}
+              )} */}
 
             {(selectedAppointment.status === "cancelled" || selectedAppointment.status === "declined") && (
               <View style={styles.permanentDeleteSection}>
@@ -1737,7 +1737,7 @@ const CalendarScreen = () => {
           onPress={() => router.push("../HORSE_OPERATOR/horse" as any)}
         />
         <TabButton
-          iconSource={require("../../assets/images/kutsero.png")}
+          iconSource={require("../../assets/images/kutserotab.png")}
           label="Kutsero"
           tabKey="kutsero"
           isActive={activeTab === "kutsero"}

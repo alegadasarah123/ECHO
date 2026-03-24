@@ -10346,7 +10346,3 @@ def get_kutsero_horse_assignments(request):
             "error": "Failed to fetch horse assignments",
             "detail": str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-
-

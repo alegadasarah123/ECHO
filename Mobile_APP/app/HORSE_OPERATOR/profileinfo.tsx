@@ -555,8 +555,7 @@ const ProfileInfoScreen = () => {
         <Text style={styles.inputLabel}>{label}</Text>
         {isDateField && isEditing ? (
           <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.inputContainer}>
-            {icon && <FontAwesome5 name={icon} size={16} color="#8B7355" style={styles.inputIconLeft} />}
-            <Text style={[styles.inputText, !displayValue && styles.placeholderText]}>
+            <Text style={[styles.inputText, !displayValue && styles.placeholderText, { flex: 1 }]}>
               {displayValue || placeholder}
             </Text>
             <FontAwesome name="calendar" size={18} color="#8B7355" />
@@ -967,7 +966,6 @@ const ProfileInfoScreen = () => {
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
                     <>
-                      <FontAwesome5 name="key" size={16} color="#fff" />
                       <Text style={styles.confirmButtonText}>Change Password</Text>
                     </>
                   )}

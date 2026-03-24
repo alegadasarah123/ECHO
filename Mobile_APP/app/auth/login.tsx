@@ -61,6 +61,8 @@ export default function LoginScreen() {
 
       console.log("Attempting login for:", email.trim().toLowerCase())
 
+      //192.168.101.5:8000
+
       const response = await fetch("https://echo-ebl8.onrender.com/api/login_mobile/", {
         method: "POST",
         headers: {

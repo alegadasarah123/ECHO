@@ -1,3 +1,4 @@
+//Hmessage.tsx
 "use client"
 
 import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router"
@@ -1461,14 +1462,6 @@ export default function MessageScreen() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.filterChip, roleFilter === "Kutsero President" && styles.activeFilterChip]}
-              onPress={() => setRoleFilter("Kutsero President")}
-            >
-              <Text style={[styles.filterChipText, roleFilter === "Kutsero President" && styles.activeFilterChipText]}>
-                Kutsero President
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
               style={[styles.filterChip, roleFilter === "Vet" && styles.activeFilterChip]}
               onPress={() => setRoleFilter("Vet")}
             >
@@ -1605,7 +1598,7 @@ export default function MessageScreen() {
           isActive={false}
         />
         <TabButtonWithBadge
-          iconSource={require("../../assets/images/kutsero.png")}
+          iconSource={require("../../assets/images/kutserotab.png")}
           label="Kutsero"
           tabKey="kutsero"
           isActive={false}
