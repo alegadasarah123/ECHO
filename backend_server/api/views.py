@@ -738,7 +738,7 @@ def update_user_status(request):
 
 
 
-#-----------------------------------------------------------------FORGOT PASSWORD WEB---------------------------------------------------------------------------------------
+#-----------------------------------------------------------------FORGOT PASSWORD---------------------------------------------------------------------------------------
 # Simple in-memory OTP storage (will reset on server restart)
 otp_storage = {}  # Format: {email: {'otp': '123456', 'expires_at': timestamp, 'purpose': 'password_reset'}}
 

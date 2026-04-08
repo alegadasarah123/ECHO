@@ -1166,62 +1166,6 @@ function App() {
               </p>
             </div>
 
-            <div style={{ ...styles.contactCard, background: "linear-gradient(135deg, #e0f2fe 0%, #fff 100%)", borderColor: "#bae6fd" }}>
-              <h3 style={{ fontSize: "1.25rem", fontWeight: "bold", color: "#111827", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <Phone size={20} color="#0284c7" />
-                Hotline Support
-              </h3>
-              <div 
-                style={styles.infoRow}
-                className="info-row-hover"
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = "translateX(5px)"
-                  e.currentTarget.style.backgroundColor = "#e0f2fe"
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "translateX(0)"
-                  e.currentTarget.style.backgroundColor = "white"
-                }}
-              >
-                <div style={{
-                  width: "2.5rem",
-                  height: "2.5rem",
-                  backgroundColor: "#0284c7",
-                  borderRadius: "0.5rem",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "white"
-                }}>
-                  <Phone size={16} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: "0.75rem", color: "#6b7280", margin: 0 }}>Support Hotline</p>
-                  <p style={{ fontWeight: "600", color: "#0284c7", margin: 0 }}>(032) 123-4567</p>
-                </div>
-                <button
-                  onClick={() => window.location.href = "tel:+63231234567"}
-                  style={{
-                    padding: "0.5rem 1rem",
-                    backgroundColor: "#0284c7",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "0.5rem",
-                    cursor: "pointer",
-                    fontSize: "0.875rem",
-                    transition: "all 0.2s"
-                  }}
-                  onMouseEnter={(e) => e.target.style.backgroundColor = "#0369a1"}
-                  onMouseLeave={(e) => e.target.style.backgroundColor = "#0284c7"}
-                >
-                  Call Now
-                </button>
-              </div>
-              <p style={{ fontSize: "0.875rem", color: "#6b7280", marginTop: "1rem", padding: "0.75rem", backgroundColor: "white", borderRadius: "0.5rem" }}>
-                🕐 Available: Monday - Friday, 8:00 AM - 5:00 PM (PHT)
-              </p>
-            </div>
-
             <div style={{ ...styles.contactCard, background: "linear-gradient(135deg, #f3e8ff 0%, #fff 100%)", borderColor: "#e9d5ff" }}>
               <h3 style={{ fontSize: "1.25rem", fontWeight: "bold", color: "#111827", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <MapPin size={20} color="#7c3aed" />

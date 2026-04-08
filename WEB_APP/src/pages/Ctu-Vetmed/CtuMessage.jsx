@@ -1205,20 +1205,25 @@ const MessagesWithDateHeaders = ({ messages, isTyping, isNewConversation, isEmpt
                 message.isOwn ? "justify-end" : "justify-start"
               } mb-4`}
             >
+             <div
+              className={`max-w-[85%] sm:max-w-[70%] md:max-w-[60%] ${
+                message.isOwn ? "order-1" : "order-2"
+              }`}
+            >
               <div
-                className={`max-w-xs lg:max-w-md ${
-                  message.isOwn ? "order-1" : "order-2"
+                className={`px-4 py-2 rounded-2xl text-sm break-words whitespace-pre-wrap ${
+                  message.isOwn
+                    ? "bg-[#b91c1c] text-white rounded-br-md"
+                    : "bg-white text-gray-800 rounded-bl-md shadow-sm"
                 }`}
+                style={{ 
+                  wordBreak: 'break-word',
+                  overflowWrap: 'break-word',
+                  maxWidth: '100%'
+                }}
               >
-                <div
-                  className={`px-4 py-2 rounded-2xl text-sm ${
-                    message.isOwn
-                      ? "bg-[#b91c1c] text-white rounded-br-md"
-                      : "bg-white text-gray-800 rounded-bl-md shadow-sm"
-                  }`}
-                >
-                  {message.content}
-                </div>
+                {message.content}
+              </div>
                 <div
                   className={`text-xs text-gray-500 mt-1 px-1 ${
                     message.isOwn ? "text-right" : "text-left"
