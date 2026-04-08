@@ -1,4 +1,3 @@
-//Hmessage.tsx
 "use client"
 
 import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router"
@@ -18,7 +17,9 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  SafeAreaView,
 } from "react-native"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 import * as SecureStore from "expo-secure-store"
 import { createClient } from '@supabase/supabase-js'
 
@@ -46,14 +47,6 @@ const dynamicSpacing = (baseSize: number) => {
   if (width < 400) return verticalScale(baseSize * 0.85)
   if (width > 450) return verticalScale(baseSize * 1.05)
   return verticalScale(baseSize)
-}
-
-const getSafeAreaPadding = () => {
-  const statusBarHeight = StatusBar.currentHeight || 0
-  return {
-    top: Math.max(statusBarHeight, 20),
-    bottom: height > 800 ? 34 : 20,
-  }
 }
 
 const API_BASE_URL = "https://echo-ebl8.onrender.com/api/horse_operator"
@@ -142,7 +135,6 @@ const ChatInterface = ({
   chatInput,
   onChatInputChange,
   onSendMessage,
-  safeArea,
   onHeaderPress,
   isOnline,
 }: {
@@ -153,11 +145,11 @@ const ChatInterface = ({
   chatInput: string
   onChatInputChange: (text: string) => void
   onSendMessage: () => void
-  safeArea: { top: number; bottom: number }
   onHeaderPress?: () => void
   isOnline?: boolean
 }) => {
   const scrollViewRef = useRef<ScrollView>(null)
+  const insets = useSafeAreaInsets()
 
   useEffect(() => {
     if (scrollViewRef.current) {
@@ -198,116 +190,119 @@ const ChatInterface = ({
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={0}
-    >
-      <StatusBar barStyle="light-content" backgroundColor="#CD853F" translucent={false} />
-
-      <View style={[styles.header, { paddingTop: safeArea.top }]}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Text style={styles.backButtonText}>←</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.headerCenter} 
-          onPress={onHeaderPress}
-          activeOpacity={onHeaderPress ? 0.7 : 1}
-          disabled={!onHeaderPress}
-        >
-          <Text style={styles.headerTitle}>{title}</Text>
-          {!isAIChat && onHeaderPress && (
-            <Text style={styles.headerSubtitle}>Tap to view profile</Text>
-          )}
-        </TouchableOpacity>
-        
-        <View style={styles.headerRight}>
-          {isAIChat ? (
-            <View style={styles.aiStatusIndicator}>
-              <View style={styles.aiStatusDot} />
-              <Text style={styles.aiStatusText}>Online</Text>
-            </View>
-          ) : (
-            <View style={styles.aiStatusIndicator}>
-              <View style={[styles.aiStatusDot, !isOnline && styles.offlineDot]} />
-              <Text style={styles.userName}>{isOnline ? 'Online' : 'Offline'}</Text>
-            </View>
-          )}
-        </View>
-      </View>
-
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.chatContainer}
-        contentContainerStyle={styles.chatContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
-        {messages.map((message, index) => {
-          const previousMessage = index > 0 ? messages[index - 1] : undefined
-          const showDateLabel = shouldShowDateLabel(message, previousMessage)
-          
-          return (
-            <View key={message.id}>
-              {showDateLabel && (
-                <View style={styles.dateLabelContainer}>
-                  <Text style={styles.dateLabel}>
-                    {getDateLabel(message.date || new Date().toISOString())}
-                  </Text>
-                </View>
-              )}
-              <View
-                style={[styles.messageContainer, message.isUser ? styles.userMessageContainer : styles.aiMessageContainer]}
-              >
-                <View style={[styles.messageBubble, message.isUser ? styles.userMessageBubble : styles.aiMessageBubble]}>
-                  <Text style={[styles.messageText, message.isUser ? styles.userMessageText : styles.aiMessageText]}>
-                    {message.text}
-                  </Text>
-                </View>
-                <Text style={[styles.messageTime, message.isUser ? styles.userMessageTime : styles.aiMessageTime]}>
-                  {message.timestamp}
-                </Text>
-              </View>
-            </View>
-          )
-        })}
-      </ScrollView>
+        <StatusBar barStyle="light-content" backgroundColor="#CD853F" />
 
-      <View style={[styles.chatInputContainer, { paddingBottom: Math.max(safeArea.bottom, 8) }]}>
-        <View style={styles.inputWrapper}>
-          <TextInput
-            style={styles.chatInput}
-            value={chatInput}
-            onChangeText={onChatInputChange}
-            placeholder={isAIChat ? "Ask me about horse care..." : "Type a message..."}
-            placeholderTextColor="#999"
-            multiline={true}
-            maxLength={500}
-            returnKeyType="default"
-            blurOnSubmit={false}
-            autoCorrect={true}
-            autoCapitalize="sentences"
-            selectionColor="#CD853F"
-            underlineColorAndroid="transparent"
-          />
+        <View style={[styles.header, { paddingTop: insets.top > 0 ? 0 : 8 }]}>
+          <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+            <Text style={styles.backButtonText}>←</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.headerCenter} 
+            onPress={onHeaderPress}
+            activeOpacity={onHeaderPress ? 0.7 : 1}
+            disabled={!onHeaderPress}
+          >
+            <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+            {!isAIChat && onHeaderPress && (
+              <Text style={styles.headerSubtitle}>Tap to view profile</Text>
+            )}
+          </TouchableOpacity>
+          
+          <View style={styles.headerRight}>
+            {isAIChat ? (
+              <View style={styles.aiStatusIndicator}>
+                <View style={styles.aiStatusDot} />
+                <Text style={styles.aiStatusText}>Online</Text>
+              </View>
+            ) : (
+              <View style={styles.aiStatusIndicator}>
+                <View style={[styles.aiStatusDot, !isOnline && styles.offlineDot]} />
+                <Text style={styles.userName}>{isOnline ? 'Online' : 'Offline'}</Text>
+              </View>
+            )}
+          </View>
         </View>
-        <TouchableOpacity
-          style={[styles.sendButton, { opacity: chatInput.trim() ? 1 : 0.5 }]}
-          onPress={onSendMessage}
-          disabled={!chatInput.trim()}
+
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.chatContainer}
+          contentContainerStyle={styles.chatContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.sendButtonText}>Send</Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+          {messages.map((message, index) => {
+            const previousMessage = index > 0 ? messages[index - 1] : undefined
+            const showDateLabel = shouldShowDateLabel(message, previousMessage)
+            
+            return (
+              <View key={message.id}>
+                {showDateLabel && (
+                  <View style={styles.dateLabelContainer}>
+                    <Text style={styles.dateLabel}>
+                      {getDateLabel(message.date || new Date().toISOString())}
+                    </Text>
+                  </View>
+                )}
+                <View
+                  style={[styles.messageContainer, message.isUser ? styles.userMessageContainer : styles.aiMessageContainer]}
+                >
+                  <View style={[styles.messageBubble, message.isUser ? styles.userMessageBubble : styles.aiMessageBubble]}>
+                    <Text style={[styles.messageText, message.isUser ? styles.userMessageText : styles.aiMessageText]}>
+                      {message.text}
+                    </Text>
+                  </View>
+                  <Text style={[styles.messageTime, message.isUser ? styles.userMessageTime : styles.aiMessageTime]}>
+                    {message.timestamp}
+                  </Text>
+                </View>
+              </View>
+            )
+          })}
+        </ScrollView>
+
+        <View style={[styles.chatInputContainer, { paddingBottom: insets.bottom > 0 ? 8 : 12 }]}>
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.chatInput}
+              value={chatInput}
+              onChangeText={onChatInputChange}
+              placeholder={isAIChat ? "Ask me about horse care..." : "Type a message..."}
+              placeholderTextColor="#999"
+              multiline={true}
+              maxLength={500}
+              returnKeyType="default"
+              blurOnSubmit={false}
+              autoCorrect={true}
+              autoCapitalize="sentences"
+              selectionColor="#CD853F"
+              underlineColorAndroid="transparent"
+            />
+          </View>
+          <TouchableOpacity
+            style={[styles.sendButton, { opacity: chatInput.trim() ? 1 : 0.5 }]}
+            onPress={onSendMessage}
+            disabled={!chatInput.trim()}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.sendButtonText}>Send</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   )
 }
 
 export default function MessageScreen() {
   const router = useRouter()
   const params = useLocalSearchParams()
-  const safeArea = getSafeAreaPadding()
+  const insets = useSafeAreaInsets()
 
   const [activeTab, setActiveTab] = useState<"conversations" | "users">("conversations")
   const [searchQuery, setSearchQuery] = useState("")
@@ -343,7 +338,6 @@ export default function MessageScreen() {
   ])
   const [individualChatMessages, setIndividualChatMessages] = useState<ChatMessage[]>([])
 
-  // Add flags to track state
   const directChatProcessedRef = useRef(false)
   const initialLoadCompleteRef = useRef(false)
   const loadMessagesTimeoutRef = useRef<number | null>(null)
@@ -418,7 +412,6 @@ export default function MessageScreen() {
         
         console.log("📋 Parsed user data:", JSON.stringify(parsedUserData, null, 2))
 
-        // Extract user_role from profile or user data
         let userRole = parsedUserData.user_role || 
                        parsedUserData.role || 
                        parsedUserData.profile?.user_role || 
@@ -436,7 +429,6 @@ export default function MessageScreen() {
 
         setUserData(unifiedUserData)
 
-        // Extract first name from user profile
         const firstName = parsedUserData.profile?.op_fname || 
                           parsedUserData.profile?.first_name || 
                           parsedUserData.email?.split('@')[0] || 
@@ -551,7 +543,6 @@ export default function MessageScreen() {
         console.log('✅ Users API response count:', data.users?.length || 0)
         
         if (data.users && data.users.length > 0) {
-          // Ensure all IDs are strings for consistency
           const usersWithStatus = data.users.map((user: any) => ({
             ...user,
             id: String(user.id || user.user_id || ''),
@@ -574,18 +565,15 @@ export default function MessageScreen() {
       return
     }
 
-    // Clear any existing timeout
     if (loadMessagesTimeoutRef.current) {
       clearTimeout(loadMessagesTimeoutRef.current)
     }
 
-    // Use setTimeout with number type for React Native
     loadMessagesTimeoutRef.current = setTimeout(async () => {
       try {
-        console.log('💬 Loading messages for other user:', otherUserId, 'Type:', typeof otherUserId)
+        console.log('💬 Loading messages for other user:', otherUserId)
         console.log('💬 Current user ID:', userData.id)
         
-        // Ensure otherUserId is properly formatted as a UUID string
         const formattedUserId = String(otherUserId).trim()
         
         const response = await fetch(
@@ -909,7 +897,6 @@ export default function MessageScreen() {
         return
       }
 
-      // Prevent opening same chat multiple times
       if (lastSelectedUserIdRef.current === userId && showIndividualChat) {
         console.log('⚠️ Chat already open for user:', userId)
         return
@@ -924,7 +911,6 @@ export default function MessageScreen() {
       setIndividualChatMessages([])
       lastSelectedUserIdRef.current = userId
       
-      // Load messages after a short delay to ensure state is updated
       setTimeout(() => {
         loadChatMessages(userId as string)
       }, 100)
@@ -1032,9 +1018,7 @@ export default function MessageScreen() {
     setIsRefreshing(false)
   }
 
-  // Fixed version of checkForDirectChat
   const checkForDirectChat = useCallback(() => {
-    // Prevent multiple executions
     if (directChatProcessedRef.current) {
       console.log("⏭️ Direct chat already processed, skipping")
       return false
@@ -1052,10 +1036,8 @@ export default function MessageScreen() {
       console.log("📨 Opening chat from profile:", params.contactName)
       console.log("📨 Contact ID:", params.contactId, "Type:", typeof params.contactId)
 
-      // Mark as processed immediately
       directChatProcessedRef.current = true
 
-      // Parse contact ID - ensure it's a string
       const contactIdValue = String(params.contactId).trim()
       
       if (!contactIdValue) {
@@ -1065,7 +1047,6 @@ export default function MessageScreen() {
 
       console.log("📨 Contact ID string:", contactIdValue)
 
-      // Create contact object with proper string ID
       const contact: AvailableUser = {
         id: contactIdValue,
         name: String(params.contactName || "Unknown User"),
@@ -1079,7 +1060,6 @@ export default function MessageScreen() {
 
       console.log("📨 Setting up chat for contact:", contact)
 
-      // Set state to open chat
       setSelectedContact(contact)
       setSelectedUserId(contactIdValue)
       setShowIndividualChat(true)
@@ -1089,7 +1069,6 @@ export default function MessageScreen() {
       
       console.log("✅ Chat state set successfully!")
       
-      // Load messages after a delay to ensure state is updated
       setTimeout(() => {
         console.log("📨 Loading messages for contact:", contactIdValue)
         loadChatMessages(contactIdValue)
@@ -1107,32 +1086,26 @@ export default function MessageScreen() {
     }
   }, [params, showIndividualChat, showAIChat, loadChatMessages])
 
-  // Load user data on mount
   useEffect(() => {
     loadUserData()
   }, [loadUserData])
 
-  // Setup and initial data loading
   useEffect(() => {
     if (userData && !initialLoadCompleteRef.current) {
       console.log("🚀 Initial load starting for user:", userData.id)
       initialLoadCompleteRef.current = true
       
-      // Setup Supabase if enabled
       if (SUPABASE_ENABLED && supabase) {
         setupOnlinePresence()
         setupMessageSubscription()
       }
       
-      // Load conversations and users
       loadConversations()
       loadAvailableUsers()
       
-      // Reset direct chat flag on initial load
       directChatProcessedRef.current = false
     }
 
-    // Cleanup function
     return () => {
       if (loadMessagesTimeoutRef.current) {
         clearTimeout(loadMessagesTimeoutRef.current)
@@ -1146,7 +1119,6 @@ export default function MessageScreen() {
     }
   }, [userData, setupOnlinePresence, setupMessageSubscription, loadConversations, loadAvailableUsers])
 
-  // Check for direct chat when params change
   useEffect(() => {
     if (userData && !showIndividualChat && !showAIChat) {
       console.log("🔄 Checking for direct chat on params change")
@@ -1154,7 +1126,6 @@ export default function MessageScreen() {
     }
   }, [userData, params, showIndividualChat, showAIChat, checkForDirectChat])
 
-  // Update conversations and users when online status changes
   useEffect(() => {
     if (userData && onlineUsers.size > 0) {
       console.log('🔄 Updating conversations/users based on online status')
@@ -1163,7 +1134,6 @@ export default function MessageScreen() {
     }
   }, [userData, onlineUsers, loadConversations, loadAvailableUsers])
 
-  // Load available users when filters change
   useEffect(() => {
     if (userData && activeTab === "users") {
       console.log('🔄 Loading available users with filters')
@@ -1171,18 +1141,15 @@ export default function MessageScreen() {
     }
   }, [searchQuery, roleFilter, activeTab, userData, loadAvailableUsers])
 
-  // Focus effect for refreshing data
   useFocusEffect(
     useCallback(() => {
       if (userData) {
         console.log('🔄 Focus effect triggered')
         
-        // Reset direct chat flag when navigating back to main screen
         if (!showIndividualChat && !showAIChat) {
           directChatProcessedRef.current = false
         }
         
-        // Only refresh if not in a chat view
         if (!showIndividualChat && !showAIChat) {
           loadConversations()
           loadAvailableUsers()
@@ -1191,7 +1158,6 @@ export default function MessageScreen() {
     }, [userData, showIndividualChat, showAIChat, loadConversations, loadAvailableUsers]),
   )
 
-  // Debug state changes
   useEffect(() => {
     console.log("📊 State Update:", {
       showIndividualChat,
@@ -1206,7 +1172,6 @@ export default function MessageScreen() {
   const handleBackFromAI = useCallback(() => setShowAIChat(false), [])
   const handleBackFromIndividual = useCallback(() => {
     console.log('🔙 Back from individual chat - navigating back to Hmessage')
-    // Navigate back to the main messages screen
     router.back()
   }, [router])
 
@@ -1251,7 +1216,7 @@ export default function MessageScreen() {
   if (isLoading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
-        <StatusBar barStyle="light-content" backgroundColor="#CD853F" translucent={false} />
+        <StatusBar barStyle="light-content" backgroundColor="#CD853F" />
         <ActivityIndicator size="large" color="white" />
         <Text style={styles.loadingText}>Loading messages...</Text>
       </View>
@@ -1269,7 +1234,6 @@ export default function MessageScreen() {
         chatInput={chatInput}
         onChatInputChange={handleChatInputChange}
         onSendMessage={handleAISendMessage}
-        safeArea={safeArea}
         isOnline={true}
       />
     )
@@ -1291,7 +1255,6 @@ export default function MessageScreen() {
         chatInput={chatInput}
         onChatInputChange={handleChatInputChange}
         onSendMessage={handleIndividualSendMessage}
-        safeArea={safeArea}
         onHeaderPress={handleNavigateToProfile}
         isOnline={isContactOnline}
       />
@@ -1354,6 +1317,7 @@ export default function MessageScreen() {
           }
         }
       }}
+      activeOpacity={0.7}
     >
       <View style={styles.tabButtonContent}>
         <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
@@ -1384,10 +1348,10 @@ export default function MessageScreen() {
   )
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#CD853F" translucent={false} />
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#CD853F" />
 
-      <View style={[styles.header, { paddingTop: safeArea.top }]}>
+      <View style={[styles.header, { paddingTop: insets.top > 0 ? 0 : 8 }]}>
         <View style={styles.headerLeft} />
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Messages</Text>
@@ -1418,6 +1382,7 @@ export default function MessageScreen() {
         <TouchableOpacity
           style={[styles.tabSwitcherButton, activeTab === "conversations" && styles.activeTabSwitcher]}
           onPress={() => setActiveTab("conversations")}
+          activeOpacity={0.7}
         >
           <Text style={[styles.tabSwitcherText, activeTab === "conversations" && styles.activeTabSwitcherText]}>
             Conversations
@@ -1431,6 +1396,7 @@ export default function MessageScreen() {
         <TouchableOpacity
           style={[styles.tabSwitcherButton, activeTab === "users" && styles.activeTabSwitcher]}
           onPress={() => setActiveTab("users")}
+          activeOpacity={0.7}
         >
           <Text style={[styles.tabSwitcherText, activeTab === "users" && styles.activeTabSwitcherText]}>All Users</Text>
         </TouchableOpacity>
@@ -1442,12 +1408,14 @@ export default function MessageScreen() {
             <TouchableOpacity
               style={[styles.filterChip, roleFilter === "" && styles.activeFilterChip]}
               onPress={() => setRoleFilter("")}
+              activeOpacity={0.7}
             >
               <Text style={[styles.filterChipText, roleFilter === "" && styles.activeFilterChipText]}>All</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.filterChip, roleFilter === "kutsero" && styles.activeFilterChip]}
               onPress={() => setRoleFilter("kutsero")}
+              activeOpacity={0.7}
             >
               <Text style={[styles.filterChipText, roleFilter === "kutsero" && styles.activeFilterChipText]}>
                 Kutsero
@@ -1456,6 +1424,7 @@ export default function MessageScreen() {
             <TouchableOpacity
               style={[styles.filterChip, roleFilter === "horse_operator" && styles.activeFilterChip]}
               onPress={() => setRoleFilter("horse_operator")}
+              activeOpacity={0.7}
             >
               <Text style={[styles.filterChipText, roleFilter === "horse_operator" && styles.activeFilterChipText]}>
                 Horse Operator
@@ -1464,6 +1433,7 @@ export default function MessageScreen() {
             <TouchableOpacity
               style={[styles.filterChip, roleFilter === "Vet" && styles.activeFilterChip]}
               onPress={() => setRoleFilter("Vet")}
+              activeOpacity={0.7}
             >
               <Text style={[styles.filterChipText, roleFilter === "Vet" && styles.activeFilterChipText]}>
                 Veterinarian
@@ -1472,6 +1442,7 @@ export default function MessageScreen() {
             <TouchableOpacity
               style={[styles.filterChip, roleFilter === "ctu_vet" && styles.activeFilterChip]}
               onPress={() => setRoleFilter("ctu_vet")}
+              activeOpacity={0.7}
             >
               <Text style={[styles.filterChipText, roleFilter === "ctu_vet" && styles.activeFilterChipText]}>
                 CTU Vet
@@ -1480,6 +1451,7 @@ export default function MessageScreen() {
             <TouchableOpacity
               style={[styles.filterChip, roleFilter === "Dvmf" && styles.activeFilterChip]}
               onPress={() => setRoleFilter("Dvmf")}
+              activeOpacity={0.7}
             >
               <Text style={[styles.filterChipText, roleFilter === "Dvmf" && styles.activeFilterChipText]}>
                 DVMF
@@ -1574,7 +1546,7 @@ export default function MessageScreen() {
       </ScrollView>
 
       <TouchableOpacity
-        style={[styles.floatingAI, { bottom: dynamicSpacing(80) + safeArea.bottom }]}
+        style={[styles.floatingAI, { bottom: insets.bottom + 20 }]}
         onPress={handleShowAIChat}
         activeOpacity={0.8}
       >
@@ -1583,7 +1555,7 @@ export default function MessageScreen() {
         </View>
       </TouchableOpacity>
 
-      <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
+      <View style={[styles.tabBar, { paddingBottom: insets.bottom > 0 ? 8 : 12 }]}>
         <TabButtonWithBadge
           iconSource={require("../../assets/images/home.png")} 
           label="Home" 
@@ -1624,7 +1596,7 @@ export default function MessageScreen() {
           isActive={false} 
         />
       </View>
-    </View>
+    </SafeAreaView>
   )
 }
 
@@ -1648,26 +1620,23 @@ const styles = StyleSheet.create({
     backgroundColor: "#CD853F",
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: scale(16),
-    paddingBottom: dynamicSpacing(12),
+    paddingVertical: verticalScale(12),
     minHeight: verticalScale(50),
-    marginTop: dynamicSpacing(0),
   },
   headerLeft: {
-    width: scale(60),
+    width: scale(40),
   },
   backButton: {
-    width: scale(32),
-    height: scale(32),
-    borderRadius: scale(16),
-    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(8),
     justifyContent: "center",
     alignItems: "center",
-    marginRight: scale(12),
   },
   backButtonText: {
     color: "white",
-    fontSize: moderateScale(18),
+    fontSize: moderateScale(28),
     fontWeight: "bold",
   },
   headerCenter: {
@@ -1676,7 +1645,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   headerTitle: {
-    fontSize: moderateScale(16),
+    fontSize: moderateScale(18),
     fontWeight: "600",
     color: "white",
     textAlign: "center",
@@ -1708,17 +1677,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   aiStatusDot: {
-    width: scale(6),
-    height: scale(6),
-    borderRadius: scale(3),
+    width: scale(8),
+    height: scale(8),
+    borderRadius: scale(4),
     backgroundColor: "#4CAF50",
-    marginRight: scale(4),
+    marginRight: scale(6),
   },
   offlineDot: {
     backgroundColor: "#999",
   },
   aiStatusText: {
-    fontSize: moderateScale(10),
+    fontSize: moderateScale(12),
     color: "white",
     fontWeight: "500",
   },
@@ -1870,9 +1839,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: scale(2),
     right: scale(2),
-    width: scale(16),
-    height: scale(16),
-    borderRadius: scale(8),
+    width: scale(14),
+    height: scale(14),
+    borderRadius: scale(7),
     backgroundColor: 'white',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1885,9 +1854,9 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   onlineIndicatorDot: {
-    width: scale(12),
-    height: scale(12),
-    borderRadius: scale(6),
+    width: scale(10),
+    height: scale(10),
+    borderRadius: scale(5),
     backgroundColor: '#44b700',
   },
   messageContent: {
